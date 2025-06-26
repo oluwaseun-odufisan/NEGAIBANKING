@@ -1,6 +1,7 @@
 // src/config/db.js
 import mongoose from 'mongoose';
 import { env } from './env.js';
+import logger from '../utils/logger.js';
 
 /**
  * Connects to MongoDB with retry logic for banking-grade reliability.
@@ -21,16 +22,23 @@ export const connectDB = async () => {
                 family: 4 // Prefer IPv4 for compatibility
             });
 
-            console.log('MongoDB connected successfully');
+            logger.info('MongoDB connected successfully', { service: 'NEG-AI-banking-backend' });
             break;
         } catch (error) {
-            console.error(`MongoDB connection error (attempt ${6 - retries}):`, error.message);
+            logger.error(`MongoDB connection error (attempt ${6 - retries})`, {
+                error: error.message,
+                stack: error.stack
+            });
             retries -= 1;
             if (retries === 0) {
-                console.error('Max retries reached. Exiting process...');
+                logger.error('Max retries reached. Exiting process...', {
+                    service: 'NEG-AI-banking-backend'
+                });
                 process.exit(1);
             }
-            console.log(`Retrying connection in ${retryDelay / 1000} seconds...`);
+            logger.info(`Retrying connection in ${retryDelay / 1000} seconds...`, {
+                service: 'NEG-AI-banking-backend'
+            });
             await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
     }
@@ -40,7 +48,6 @@ export const connectDB = async () => {
         try {
             const db = mongoose.connection.db;
             // Ensure core collections exist
-            await db.createCollection('users');
             await db.createCollection('wallets');
             await db.createCollection('transactions');
             await db.createCollection('kycs');
@@ -48,33 +55,46 @@ export const connectDB = async () => {
             await db.createCollection('auditlogs');
 
             // Create indexes for performance and compliance
-            await db.collection('users').createIndex({ email: 1 }, { unique: true });
             await db.collection('wallets').createIndex({ userId: 1 }, { unique: true });
             await db.collection('transactions').createIndex({ userId: 1, createdAt: -1 });
             await db.collection('kycs').createIndex({ userId: 1 }, { unique: true });
             await db.collection('notifications').createIndex({ userId: 1, createdAt: -1 });
             await db.collection('auditlogs').createIndex({ action: 1, createdAt: -1 });
 
-            console.log('MongoDB collections and indexes initialized successfully');
+            logger.info('MongoDB collections and indexes initialized successfully', {
+                service: 'NEG-AI-banking-backend'
+            });
         } catch (error) {
-            console.error('Error initializing collections:', error.message);
+            logger.error('Error initializing collections', {
+                error: error.message,
+                stack: error.stack,
+                service: 'NEG-AI-banking-backend'
+            });
         }
     });
 
     // Handle connection errors
     mongoose.connection.on('error', error => {
-        console.error('MongoDB connection error:', error.message);
+        logger.error('MongoDB connection error', {
+            error: error.message,
+            stack: error.stack,
+            service: 'NEG-AI-banking-backend'
+        });
     });
 
     // Handle disconnection
     mongoose.connection.on('disconnected', () => {
-        console.warn('MongoDB disconnected. Attempting to reconnect...');
+        logger.warn('MongoDB disconnected. Attempting to reconnect...', {
+            service: 'NEG-AI-banking-backend'
+        });
     });
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
         await mongoose.connection.close();
-        console.log('MongoDB connection closed due to app termination');
+        logger.info('MongoDB connection closed due to app termination', {
+            service: 'NEG-AI-banking-backend'
+        });
         process.exit(0);
     });
 };

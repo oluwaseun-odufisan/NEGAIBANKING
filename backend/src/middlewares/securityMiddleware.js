@@ -1,9 +1,10 @@
 // src/middlewares/securityMiddleware.js
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import  xss  from 'xss';
+import xss from 'xss';
 import { env } from '../config/env.js';
 import logger from '../utils/logger.js';
+import { errorResponse } from '../utils/response.js';
 
 /**
  * Custom MongoDB sanitization to remove malicious operators from inputs.
@@ -12,20 +13,25 @@ import logger from '../utils/logger.js';
  * @returns {Object} Sanitized object
  */
 const sanitizeMongoInput = (input) => {
-    if (!input || typeof input !== 'object') return input;
+    if (!input || typeof input !== 'object') {
+        logger.debug('sanitizeMongoInput: Empty or non-object input', { input });
+        return input || {};
+    }
 
     const sanitized = Array.isArray(input) ? [] : {};
     const mongoOperators = [
-        '$inc', '$set', '$unset', '$push', '$pull', '$addToSet', '$pop', '$rename',
-        '$bit', '$max', '$min', '$currentDate', '$type', '$exists', '$where', '$expr',
-        '$jsonSchema', '$mod', '$regex', '$text', '$near', '$geoIntersects', '$geoWithin',
-        '$all', '$elemMatch', '$size', '$not', '$nor', '$or', '$and'
+        '$inc', '$set', '$unset', '$push', '$pull', '$addToSet', '$pop',
+        '$rename', '$bit', '$max', '$min', '$currentDate', '$type', '$exists',
+        '$where', '$expr', '$jsonSchema', '$mod', '$regex', '$text', '$near',
+        '$geoIntersects', '$geoWithin', '$all', '$elemMatch', '$size', '$not',
+        '$nor', '$or', '$and'
     ];
 
     for (const [key, value] of Object.entries(input)) {
         if (mongoOperators.includes(key)) {
             logger.warn(`Detected MongoDB operator in input: ${key}`, {
-                requestId: 'N/A'
+                requestId: 'N/A',
+                inputKey: key
             });
             continue;
         }
@@ -33,12 +39,13 @@ const sanitizeMongoInput = (input) => {
         if (typeof value === 'object' && value !== null) {
             sanitized[key] = sanitizeMongoInput(value);
         } else if (typeof value === 'string') {
-            sanitized[key] = value.replace(/^\$/, ''); // Remove leading $
+            sanitized[key] = value.replace(/^\$/, '');
         } else {
             sanitized[key] = value;
         }
     }
 
+    logger.debug('sanitizeMongoInput: Processed', { input, sanitized });
     return sanitized;
 };
 
@@ -46,7 +53,7 @@ const sanitizeMongoInput = (input) => {
  * Custom XSS sanitization using xss library.
  * Sanitizes req.body, req.params, and creates req.sanitizedQuery.
  * @param {Object} req - Express request object
- * @returns {Object} Sanitized data
+ * @returns {Object} Sanitized request object
  */
 const sanitizeXSS = (req) => {
     const xssOptions = {
@@ -56,8 +63,8 @@ const sanitizeXSS = (req) => {
     };
 
     // Sanitize req.body
-    if (req.body && typeof req.body === 'object') {
-        req.sanitizedBody = Object.entries(req.body).reduce((acc, [key, value]) => {
+    req.sanitizedBody = req.body && typeof req.body === 'object'
+        ? Object.entries(req.body).reduce((acc, [key, value]) => {
             if (typeof value === 'string') {
                 acc[key] = xss(value, xssOptions);
             } else if (typeof value === 'object' && value !== null) {
@@ -66,24 +73,24 @@ const sanitizeXSS = (req) => {
                 acc[key] = value;
             }
             return acc;
-        }, {});
-    }
+        }, {})
+        : {};
 
     // Sanitize req.params
-    if (req.params && typeof req.params === 'object') {
-        req.sanitizedParams = Object.entries(req.params).reduce((acc, [key, value]) => {
+    req.sanitizedParams = req.params && typeof req.params === 'object'
+        ? Object.entries(req.params).reduce((acc, [key, value]) => {
             if (typeof value === 'string') {
                 acc[key] = xss(value, xssOptions);
             } else {
                 acc[key] = value;
             }
             return acc;
-        }, {});
-    }
+        }, {})
+        : {};
 
-    // Create req.sanitizedQuery (do not modify req.query)
-    if (req.query && typeof req.query === 'object') {
-        req.sanitizedQuery = Object.entries(req.query).reduce((acc, [key, value]) => {
+    // Sanitize req.query
+    req.sanitizedQuery = req.query && typeof req.query === 'object'
+        ? Object.entries(req.query).reduce((acc, [key, value]) => {
             if (typeof value === 'string') {
                 acc[key] = xss(value, xssOptions);
             } else if (typeof value === 'object' && value !== null) {
@@ -92,8 +99,14 @@ const sanitizeXSS = (req) => {
                 acc[key] = value;
             }
             return acc;
-        }, {});
-    }
+        }, {})
+        : {};
+
+    logger.debug('sanitizeXSS: Processed', {
+        sanitizedBody: req.sanitizedBody,
+        sanitizedParams: req.sanitizedParams,
+        sanitizedQuery: req.sanitizedQuery
+    });
 
     return req;
 };
@@ -107,6 +120,13 @@ const sanitizeXSS = (req) => {
  */
 const securityMiddleware = (req, res, next) => {
     try {
+        logger.debug('securityMiddleware: Processing request', {
+            requestId: req.requestId || 'N/A',
+            body: req.body,
+            params: req.params,
+            query: req.query
+        });
+
         // Apply helmet with banking-grade headers
         helmet({
             contentSecurityPolicy: {
@@ -142,22 +162,21 @@ const securityMiddleware = (req, res, next) => {
 
             limiter(req, res, () => {
                 // Apply MongoDB sanitization
-                if (req.body) req.sanitizedBody = sanitizeMongoInput(req.body);
-                if (req.query) req.sanitizedQuery = sanitizeMongoInput(req.query);
-                if (req.params) req.sanitizedParams = sanitizeMongoInput(req.params);
+                req.sanitizedBody = sanitizeMongoInput(req.body);
+                req.sanitizedQuery = sanitizeMongoInput(req.query);
+                req.sanitizedParams = sanitizeMongoInput(req.params);
 
                 // Apply XSS sanitization
                 sanitizeXSS(req);
 
                 // Log sanitization events
-                if (req.sanitizedBody || req.sanitizedQuery || req.sanitizedParams) {
-                    logger.info('Input sanitized', {
-                        requestId: req.requestId || 'N/A',
-                        bodySanitized: !!req.sanitizedBody,
-                        querySanitized: !!req.sanitizedQuery,
-                        paramsSanitized: !!req.sanitizedParams
-                    });
-                }
+                logger.info('Input sanitized', {
+                    requestId: req.requestId || 'N/A',
+                    bodySanitized: !!req.sanitizedBody,
+                    querySanitized: !!req.sanitizedQuery,
+                    paramsSanitized: !!req.sanitizedParams,
+                    sanitizedBody: req.sanitizedBody
+                });
 
                 next();
             });
@@ -168,11 +187,14 @@ const securityMiddleware = (req, res, next) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).json({
-            status: 'error',
-            message: 'Internal server error during security processing',
-            requestId: req.requestId || 'N/A'
-        });
+        res.status(500).json(
+            errorResponse(
+                'Internal server error during security processing',
+                500,
+                null,
+                req.requestId || 'N/A'
+            )
+        );
     }
 };
 

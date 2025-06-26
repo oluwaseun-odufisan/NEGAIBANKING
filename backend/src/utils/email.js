@@ -26,7 +26,7 @@ export const sendErrorAlert = async (error, context = {}) => {
         const mailOptions = {
             from: env.EMAIL_USER,
             to: env.EMAIL_USER, // Replace with admin email in production
-            subject: `Critical Error in Digital Banking Platform [${env.NODE_ENV}]`,
+            subject: `Critical Error in NEG AI Banking Platform [${env.NODE_ENV}]`,
             text: `
         Error: ${error.message}
         Stack: ${error.stack}

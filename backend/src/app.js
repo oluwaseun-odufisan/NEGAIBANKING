@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import corsMiddleware from './middlewares/corsMiddleware.js';
 import requestIdMiddleware from './middlewares/requestId.js';
 import securityMiddleware from './middlewares/securityMiddleware.js';
+import authRoutes from './routes/authRoutes.js';
 import morgan from 'morgan';
 import { env } from './config/env.js';
 import logger from './utils/logger.js';
@@ -42,17 +43,20 @@ app.use(
     })
 );
 
-// Security middleware (helmet, rate-limiting, sanitization)
-app.use(securityMiddleware);
-
 // Parse JSON and URL-encoded bodies
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// Security middleware (helmet, rate-limiting, sanitization)
+app.use(securityMiddleware);
 
 // Favicon endpoint to prevent 404 errors
 app.get('/favicon.ico', (req, res) => {
     res.sendFile(path.join(__dirname, '../public', 'favicon.ico'));
 });
+
+// Authentication routes
+app.use('/api/auth', authRoutes)
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

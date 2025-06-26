@@ -1,0 +1,47 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Logs
+logs/
+*.log
+npm.log
+yarn.log
+
+# Build artifacts
+dist/
+build/
+
+# Test coverage
+coverage/
+
+# Editor files
+.vscode/
+.idea/
+*.sublime*
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+
+# MongoDB backups
+backups/
+
+# .gitignore
+# ... (existing entries)
+public/*
+!public/favicon.ico

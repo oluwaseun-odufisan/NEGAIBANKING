@@ -1,4 +1,3 @@
-// src/services/walletService.js
 import mongoose from 'mongoose';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,8 +20,17 @@ import { sendErrorAlert } from '../utils/email.js';
  */
 const sendTransactionEmail = async (user, transaction, requestId) => {
     try {
+        if (!user?.email) {
+            logger.warn('User email is missing for transaction email', {
+                userId: user?._id || 'unknown',
+                transactionId: transaction._id,
+                requestId
+            });
+            return;
+        }
         if (!env.EMAIL_USER || !env.EMAIL_PASS || !env.EMAIL_SERVICE) {
-            throw new Error('Email configuration is incomplete');
+            logger.warn('Email configuration is incomplete', { requestId });
+            return;
         }
 
         const mailOptions = {
@@ -54,14 +62,13 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
         });
     } catch (error) {
         logger.error('Failed to send transaction email', {
-            userId: user._id,
-            email: user.email,
+            userId: user?._id || 'unknown',
+            email: user?.email || 'unknown',
             transactionId: transaction._id,
             requestId,
             error: error.message,
             stack: error.stack
         });
-        // Do not throw error to avoid blocking wallet operations
     }
 };
 
@@ -78,24 +85,46 @@ const initiateFlutterwavePayment = async (user, amount, reference, requestId) =>
         if (!env.FLUTTERWAVE_SECRET_KEY) {
             throw new Error('Flutterwave secret key is not defined');
         }
-        if (!env.FRONTEND_URL) {
-            throw new Error('Frontend URL is not defined');
+
+        // Log raw amount and its type for debugging
+        logger.debug('Raw amount received in initiateFlutterwavePayment', {
+            userId: user._id,
+            email: user.email,
+            amount,
+            amountType: typeof amount,
+            reference,
+            requestId
+        });
+
+        // Ensure amount is a valid number
+        const validatedAmount = Number(amount);
+        if (isNaN(validatedAmount) || validatedAmount <= 0) {
+            logger.warn('Invalid amount for Flutterwave payment', {
+                userId: user._id,
+                email: user.email,
+                amount,
+                amountType: typeof amount,
+                validatedAmount,
+                reference,
+                requestId
+            });
+            throw new Error('Amount must be a positive number');
         }
 
         const response = await axios.post(
             'https://api.flutterwave.com/v3/payments',
             {
                 tx_ref: reference,
-                amount,
+                amount: validatedAmount,
                 currency: 'NGN',
-                redirect_url: `${env.FRONTEND_URL}/payment-callback`,
+                redirect_url: 'https://068d-197-210-29-66.ngrok-free.app/api/wallet/callback',
                 customer: {
                     email: user.email,
                     name: user.email
                 },
                 customizations: {
                     title: 'NEG AI Banking Wallet Funding',
-                    description: `Fund wallet with NGN ${amount}`
+                    description: `Fund wallet with NGN ${validatedAmount.toFixed(2)}`
                 }
             },
             {
@@ -111,7 +140,15 @@ const initiateFlutterwavePayment = async (user, amount, reference, requestId) =>
             email: user.email,
             reference,
             requestId,
-            flutterwaveResponse: response.data
+            amount: validatedAmount,
+            flutterwaveResponse: {
+                status: response.data.status,
+                message: response.data.message,
+                data: {
+                    link: response.data.data.link,
+                    tx_ref: response.data.data.tx_ref
+                }
+            }
         });
 
         return response.data;
@@ -121,10 +158,23 @@ const initiateFlutterwavePayment = async (user, amount, reference, requestId) =>
             email: user.email,
             reference,
             requestId,
+            amount,
             error: error.response?.data || error.message,
             stack: error.stack
         });
-        throw new Error('Failed to initiate payment with Flutterwave');
+        // Only send error email if user.email is valid
+        if (user?.email) {
+            await sendErrorAlert(
+                { message: 'Failed to initiate Flutterwave payment' },
+                {
+                    to: user.email,
+                    subject: 'Payment Initiation Failed - NEG AI Banking Platform',
+                    text: `Failed to initiate payment. Error: ${error.message}. Request ID: ${requestId}`,
+                    requestId
+                }
+            );
+        }
+        throw new Error(`Failed to initiate payment with Flutterwave: ${error.response?.data?.message || error.message}`);
     }
 };
 
@@ -153,7 +203,8 @@ const verifyFlutterwavePayment = async (transactionId, requestId) => {
             transactionId,
             requestId,
             status: response.data.status,
-            amount: response.data.data.amount
+            amount: response.data.data?.amount,
+            tx_ref: response.data.data?.tx_ref
         });
 
         return response.data;
@@ -164,7 +215,7 @@ const verifyFlutterwavePayment = async (transactionId, requestId) => {
             error: error.response?.data || error.message,
             stack: error.stack
         });
-        throw new Error('Failed to verify payment with Flutterwave');
+        throw new Error(`Failed to verify payment with Flutterwave: ${error.response?.data?.message || error.message}`);
     }
 };
 
@@ -225,7 +276,15 @@ const creditWallet = async ({
         await session.commitTransaction();
 
         const user = await User.findById(userId);
-        await sendTransactionEmail(user, transaction, requestId);
+        if (user) {
+            await sendTransactionEmail(user, transaction, requestId);
+        } else {
+            logger.warn('User not found for email notification', {
+                userId,
+                reference,
+                requestId
+            });
+        }
 
         logger.info('Wallet credited successfully', {
             userId,
@@ -309,7 +368,15 @@ const debitWallet = async ({
         await session.commitTransaction();
 
         const user = await User.findById(userId);
-        await sendTransactionEmail(user, transaction, requestId);
+        if (user) {
+            await sendTransactionEmail(user, transaction, requestId);
+        } else {
+            logger.warn('User not found for email notification', {
+                userId,
+                reference,
+                requestId
+            });
+        }
 
         logger.info('Wallet debited successfully', {
             userId,
@@ -421,16 +488,17 @@ const transferFunds = async ({
         await session.commitTransaction();
 
         // Send emails asynchronously
-        sendTransactionEmail(
-            await User.findById(senderId),
-            senderTransaction,
-            requestId
-        ).catch(() => {
-            logger.error('Async sender transaction email failed', { senderId, requestId });
-        });
-        sendTransactionEmail(recipient, recipientTransaction, requestId).catch(() => {
-            logger.error('Async recipient transaction email failed', { recipientId: recipient._id, requestId });
-        });
+        const sender = await User.findById(senderId);
+        if (sender) {
+            sendTransactionEmail(sender, senderTransaction, requestId).catch(() => {
+                logger.error('Async sender transaction email failed', { senderId, requestId });
+            });
+        }
+        if (recipient) {
+            sendTransactionEmail(recipient, recipientTransaction, requestId).catch(() => {
+                logger.error('Async recipient transaction email failed', { recipientId: recipient._id, requestId });
+            });
+        }
 
         logger.info('Transfer completed successfully', {
             senderId,

@@ -17,18 +17,25 @@ import { successResponse, errorResponse } from '../utils/response.js';
 const fundWallet = async (req, res) => {
     const requestId = req.requestId;
     try {
+        // Log raw request body for debugging
+        logger.debug('Raw request body for fundWallet', {
+            userId: req.user.id,
+            requestId,
+            body: req.body
+        });
+
         // Fallback to req.body if validatedBody is undefined
         const input = req.validatedBody || req.body || {};
         const amountSchema = z.number().positive('Amount must be positive').max(1000000, 'Amount cannot exceed NGN 1,000,000');
-        const result = amountSchema.safeParse(input.amount);
+        const parsedAmount = Number(input.amount);
+        const result = amountSchema.safeParse(parsedAmount);
 
         if (!result.success) {
             logger.warn('Invalid or missing amount for funding', {
                 userId: req.user.id,
                 requestId,
                 body: req.body,
-                sanitizedBody: req.sanitizedBody,
-                validatedBody: req.validatedBody,
+                parsedAmount,
                 validationErrors: result.error.issues
             });
             return res.status(400).json(
@@ -36,13 +43,17 @@ const fundWallet = async (req, res) => {
             );
         }
 
-        const { amount } = result.data;
-        const userId = req.user.id;
+        const amount = result.data; // Use validated amount directly
+        logger.debug('Validated amount for fundWallet', {
+            userId: req.user.id,
+            requestId,
+            amount
+        });
 
         // Fraud detection: Limit to 1M NGN
         if (amount > 1000000) {
             logger.warn('Funding amount exceeds limit', {
-                userId,
+                userId: req.user.id,
                 amount,
                 requestId
             });
@@ -51,18 +62,18 @@ const fundWallet = async (req, res) => {
             );
         }
 
-        const user = await User.findById(userId);
+        const user = await User.findById(req.user.id);
         if (!user) {
-            logger.warn('User not found for funding', { userId, requestId });
+            logger.warn('User not found for funding', { userId: req.user.id, requestId });
             return res.status(404).json(
                 errorResponse('User not found', 404, null, requestId)
             );
         }
 
-        const wallet = await Wallet.findOne({ userId });
+        const wallet = await Wallet.findOne({ userId: req.user.id });
         if (!wallet) {
-            logger.warn('Wallet not found for funding, creating new wallet', { userId, requestId });
-            const newWallet = new Wallet({ userId, balance: 0 });
+            logger.warn('Wallet not found for funding, creating new wallet', { userId: req.user.id, requestId });
+            const newWallet = new Wallet({ userId: req.user.id, balance: 0 });
             await newWallet.save();
         }
 
@@ -75,7 +86,7 @@ const fundWallet = async (req, res) => {
         );
 
         logger.info('Wallet funding initiated', {
-            userId,
+            userId: req.user.id,
             amount,
             reference,
             requestId
@@ -220,6 +231,191 @@ const verifyPayment = async (req, res) => {
         res.status(500).json(
             errorResponse('Internal server error during payment verification', 500, null, requestId)
         );
+    }
+};
+
+/**
+ * Handles Flutterwave callback after payment.
+ */
+const handleFlutterwaveCallback = async (req, res) => {
+    const requestId = req.requestId;
+    try {
+        const { transaction_id, tx_ref, status } = req.validatedQuery || {};
+
+        if (!transaction_id || !tx_ref || !status) {
+            logger.warn('Invalid or missing callback parameters', {
+                requestId,
+                query: req.query,
+                validatedQuery: req.validatedQuery
+            });
+            return res.status(400).json(
+                errorResponse('Invalid or missing callback parameters', 400, null, requestId)
+            );
+        }
+
+        logger.info('Flutterwave callback received', {
+            requestId,
+            transactionId: transaction_id,
+            reference: tx_ref,
+            status
+        });
+
+        if (status === 'successful') {
+            res.status(200).json(
+                successResponse('Payment callback received. Please verify payment.', 200, {
+                    transactionId: transaction_id,
+                    reference: tx_ref,
+                    nextStep: 'Use /api/wallet/verify-payment with the transactionId and reference'
+                }, requestId)
+            );
+        } else if (status === 'cancelled' || status === 'failed') {
+            logger.warn('Payment callback indicates failure or cancellation', {
+                requestId,
+                transactionId: transaction_id,
+                reference: tx_ref,
+                status
+            });
+            return res.status(400).json(
+                errorResponse(`Payment ${status}`, 400, null, requestId)
+            );
+        } else {
+            logger.warn('Unknown payment status in callback', {
+                requestId,
+                transactionId: transaction_id,
+                reference: tx_ref,
+                status
+            });
+            return res.status(400).json(
+                errorResponse('Unknown payment status', 400, null, requestId)
+            );
+        }
+    } catch (error) {
+        logger.error('Error handling Flutterwave callback', {
+            requestId,
+            error: error.message,
+            stack: error.stack
+        });
+        res.status(500).json(
+            errorResponse('Internal server error during callback', 500, null, requestId)
+        );
+    }
+};
+
+/**
+ * Handles Flutterwave webhook for payment events.
+ */
+const handleFlutterwaveWebhook = async (req, res) => {
+    const requestId = req.requestId;
+    try {
+        const { id: transactionId, txRef: reference, status } = req.validatedBody || {};
+
+        if (!transactionId || !reference || !status) {
+            logger.warn('Invalid or missing webhook parameters', {
+                requestId,
+                body: req.body,
+                validatedBody: req.validatedBody
+            });
+            return res.status(200).json({ status: 'received', message: 'Invalid or missing webhook parameters' });
+        }
+
+        logger.info('Flutterwave webhook received', {
+            requestId,
+            transactionId,
+            reference,
+            status
+        });
+
+        if (status !== 'successful') {
+            logger.warn('Webhook indicates non-successful payment', {
+                requestId,
+                transactionId,
+                reference,
+                status
+            });
+            return res.status(200).json({ status: 'received', message: `Payment ${status}` });
+        }
+
+        const verificationData = await walletService.verifyFlutterwavePayment(
+            transactionId,
+            requestId
+        );
+
+        if (verificationData.status !== 'success') {
+            logger.warn('Webhook payment verification failed', {
+                requestId,
+                transactionId,
+                reference,
+                verificationStatus: verificationData.status
+            });
+            return res.status(200).json({ status: 'received', message: 'Payment verification failed' });
+        }
+
+        const user = await User.findOne({ email: verificationData.data.customer?.email });
+        if (!user) {
+            logger.warn('User not found for webhook payment', {
+                requestId,
+                transactionId,
+                reference,
+                email: verificationData.data.customer?.email
+            });
+            return res.status(200).json({ status: 'received', message: 'User not found' });
+        }
+
+        const wallet = await Wallet.findOne({ userId: user._id }).select('+balance');
+        if (!wallet) {
+            logger.warn('Wallet not found for webhook verification', {
+                userId: user._id,
+                requestId
+            });
+            return res.status(200).json({ status: 'received', message: 'Wallet not found' });
+        }
+
+        const existingTransaction = wallet.ledger.find((tx) => tx.reference === reference);
+        if (existingTransaction) {
+            logger.warn('Duplicate webhook transaction', {
+                userId: user._id,
+                reference,
+                requestId
+            });
+            return res.status(200).json({ status: 'received', message: 'Transaction already processed' });
+        }
+
+        const amount = verificationData.data.amount;
+        if (amount > 1000000) {
+            logger.warn('Webhook verified amount exceeds limit', {
+                userId: user._id,
+                amount,
+                reference,
+                requestId
+            });
+            return res.status(200).json({ status: 'received', message: 'Verified amount exceeds NGN 1,000,000' });
+        }
+
+        const { wallet: updatedWallet } = await walletService.creditWallet({
+            userId: user._id,
+            amount,
+            reference,
+            source: 'flutterwave',
+            description: 'Wallet funding via Flutterwave webhook',
+            requestId,
+            flutterwaveTxId: transactionId
+        });
+
+        logger.info('Webhook payment verified and wallet credited', {
+            userId: user._id,
+            amount,
+            reference,
+            requestId
+        });
+
+        return res.status(200).json({ status: 'received', message: 'Payment verified and wallet credited' });
+    } catch (error) {
+        logger.error('Error handling Flutterwave webhook', {
+            requestId,
+            error: error.message,
+            stack: error.stack
+        });
+        return res.status(200).json({ status: 'received', message: 'Error processing webhook' });
     }
 };
 
@@ -378,6 +574,8 @@ const getBalance = async (req, res) => {
 export default {
     fundWallet,
     verifyPayment,
+    handleFlutterwaveCallback,
+    handleFlutterwaveWebhook,
     transferFunds,
     getBalance
 };

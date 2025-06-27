@@ -10,7 +10,8 @@ import {
     logout,
     logoutAll,
     requestPasswordReset,
-    resetPassword
+    resetPassword,
+    createWalletForUser
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import roleMiddleware from '../middlewares/roleMiddleware.js';
@@ -69,6 +70,15 @@ const resetPasswordSchema = {
     })
 };
 
+/**
+ * Zod schema for creating wallet for existing user.
+ */
+const createWalletSchema = {
+    body: z.object({
+        email: z.string().email({ message: 'Invalid email format' })
+    })
+};
+
 // Rate limiter for sensitive endpoints
 const authRateLimiter = rateLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -81,14 +91,7 @@ const authRateLimiter = rateLimiter({
 });
 
 // Public routes
-router.post('/register', (req, res, next) => {
-    logger.debug('authRoutes: Register route invoked', {
-        requestId: req.requestId,
-        body: req.body,
-        schemaDefined: !!registerSchema.body // Log schema presence
-    });
-    validateRequest(registerSchema)(req, res, next);
-}, register);
+router.post('/register', authRateLimiter, validateRequest(registerSchema), register);
 router.post('/login', validateRequest(loginSchema), login);
 router.post('/refresh-token', validateRequest(refreshTokenSchema), refreshToken);
 router.post('/request-password-reset', validateRequest(passwordResetRequestSchema), requestPasswordReset);
@@ -100,12 +103,9 @@ router.post('/logout', authMiddleware, logout);
 router.post('/logout-all', authMiddleware, logoutAll);
 
 // Admin routes
+router.post('/create-wallet', authMiddleware, roleMiddleware(['admin']), validateRequest(createWalletSchema), createWalletForUser);
 router.get('/admin/users', authMiddleware, roleMiddleware(['admin']), (req, res) => {
     res.status(200).json({ message: 'Admin users endpoint' });
 });
 
 export default router;
-
-
-
-

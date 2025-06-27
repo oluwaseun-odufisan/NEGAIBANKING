@@ -1,0 +1,95 @@
+curl -X POST -H "Content-Type: application/json" -d '{"email":"avalawson452@gmail.com","password":"SecurePass1234!"}' http://localhost:3000/api/auth/register
+
+
+curl -X POST -H "Content-Type: application/json" -d '{"email":"avalawson452@gmail.com","password":"SecurePass1234!"}' http://localhost:3000/api/auth/login
+
+
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5MDg4MSwiZXhwIjoxNzUwOTk0NDgxfQ.vQXi7ZyXSyPcQLNpAQlD3fukQMYToYciShePGTwU3xM
+
+
+
+
+
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5MDg4MSwiZXhwIjoxNzUwOTk0NDgxfQ.vQXi7ZyXSyPcQLNpAQlD3fukQMYToYciShePGTwU3xM" -d '{"amount":10000}' http://localhost:3000/api/wallet/fund
+
+
+
+{"status":"success","message":"Payment initiated successfully","data":{"paymentUrl":"https://checkout-v2.dev-flutterwave.com/v3/hosted/pay/718d67b45aaeab9700c1","reference":"FUND-1ef0abb5-5e1d-4cff-b853-feede847360d","walletId":"685da83cc5ec2765ddf313e1"},"requestId":"32a82e4e-e35f-45b1-8cba-1a0f34f50f79","timestamp":"2025-06-27T02:21:54.869Z"}%  
+
+
+
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5MDg4MSwiZXhwIjoxNzUwOTk0NDgxfQ.vQXi7ZyXSyPcQLNpAQlD3fukQMYToYciShePGTwU3xM" -d '{"transactionId":"32a82e4e-e35f-45b1-8cba-1a0f34f50f79","reference":"FUND-1ef0abb5-5e1d-4cff-b853-feede847360d"}' http://localhost:3000/api/wallet/verify-payment
+
+
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer <accessToken>" -d '{"recipientEmail":"user2@example.com","amount":5000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer
+
+
+curl -H "Authorization: Bearer <accessToken>" http://localhost:3000/api/wallet/balance
+
+
+
+
+
+
+// src/controllers/authController.js
+// ... (other imports and functions remain unchanged)
+
+/**
+ * Logout from current session.
+ */
+export const logout = async (req, res) => {
+    const requestId = req.requestId;
+    try {
+        const user = await User.findById(req.user.id).select('+sessions');
+        if (!user) {
+            logger.warn('User not found for logout', { requestId, userId: req.user.id });
+            return res.status(404).json(
+                errorResponse('User not found', 404, null, req.requestId)
+            );
+        }
+
+        const { refreshToken } = req.body;
+        if (!refreshToken) {
+            logger.warn('No refresh token provided for logout', { requestId, userId: req.user.id });
+            return res.status(400).json(
+                errorResponse('No refresh token provided', 400, null, req.requestId)
+            );
+        }
+
+        user.sessions = user.sessions.filter((s) => s.refreshToken !== refreshToken);
+        await user.save();
+
+        logger.info('User logged out successfully', {
+            requestId,
+            userId: user._id,
+            email: user.email
+        });
+
+        res.status(200).json(
+            successResponse('Logged out successfully', 200, null, req.requestId)
+        );
+    } catch (error) {
+        logger.error('Logout error', {
+            requestId,
+            error: error.message,
+            stack: error.stack
+        });
+        res.status(500).json(
+            errorResponse(`Internal server error during logout: ${error.message}`, 500, null, req.requestId)
+        );
+    }
+};
+
+// ... (other functions remain unchanged)
+
+export default {
+    register,
+    login,
+    refreshToken,
+    getProfile,
+    logout,
+    logoutAll,
+    requestPasswordReset,
+    resetPassword,
+    createWalletForUser
+};

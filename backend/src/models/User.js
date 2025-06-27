@@ -119,6 +119,52 @@ userSchema.pre('save', async function (next) {
     }
 });
 
+// Create wallet on user registration with transaction
+userSchema.post('save', async function (doc, next) {
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+
+        // Dynamic import to avoid circular dependency
+        const { Wallet } = await import('./Wallet.js');
+
+        const existingWallet = await Wallet.findOne({ userId: this._id }).session(session);
+        if (existingWallet) {
+            logger.warn('Wallet already exists for user', {
+                userId: this._id,
+                email: this.email,
+                walletId: existingWallet._id
+            });
+            await session.commitTransaction();
+            return next();
+        }
+
+        const wallet = new Wallet({ userId: this._id, balance: 0 });
+        await wallet.save({ session });
+
+        await session.commitTransaction();
+
+        logger.info('Wallet created successfully for user', {
+            userId: this._id,
+            email: this.email,
+            walletId: wallet._id
+        });
+
+        next();
+    } catch (error) {
+        await session.abortTransaction();
+        logger.error('Error creating wallet for user', {
+            userId: this._id,
+            email: this.email,
+            error: error.message,
+            stack: error.stack
+        });
+        throw new Error(`Wallet creation failed: ${error.message}`);
+    } finally {
+        session.endSession();
+    }
+});
+
 // Compare password for login
 userSchema.methods.comparePassword = async function (candidatePassword) {
     try {
@@ -156,5 +202,7 @@ userSchema.methods.cleanupSessions = async function () {
         throw error;
     }
 };
+
+logger.info('User model initialized', { module: 'User' });
 
 export const User = mongoose.model('User', userSchema);

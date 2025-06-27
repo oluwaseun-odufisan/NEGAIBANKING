@@ -1,4 +1,3 @@
-// src/middlewares/validateRequest.js
 import { z } from 'zod';
 import logger from '../utils/logger.js';
 import { errorResponse } from '../utils/response.js';
@@ -11,33 +10,25 @@ import { errorResponse } from '../utils/response.js';
  * @returns {Function} Express middleware
  */
 const validateRequest = (schemas) => {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         try {
-            // Log initial request details
-            logger.debug('validateRequest: Starting validation', {
+            // Log schema structure
+            logger.debug('validateRequest: Schema received', {
                 requestId: req.requestId,
                 method: req.method,
                 url: req.originalUrl,
-                body: req.body,
-                sanitizedBody: req.sanitizedBody,
-                query: req.query,
-                params: req.params,
-                schemaProvided: schemas ? Object.keys(schemas) : null
+                schemaKeys: schemas ? Object.keys(schemas) : null,
+                hasBodySchema: !!schemas?.body,
+                hasQuerySchema: !!schemas?.query,
+                hasParamsSchema: !!schemas?.params
             });
 
-            if (!schemas || typeof schemas !== 'object') {
-                logger.error('validateRequest: Invalid or missing schemas provided', {
+            if (!schemas || typeof schemas !== 'object' || !Object.keys(schemas).length) {
+                logger.warn('validateRequest: No schemas provided, skipping validation', {
                     requestId: req.requestId,
                     url: req.originalUrl
                 });
-                return res.status(500).json(
-                    errorResponse(
-                        'Server configuration error: No valid schema provided',
-                        500,
-                        null,
-                        req.requestId || 'N/A'
-                    )
-                );
+                return next();
             }
 
             const { body: bodySchema, query: querySchema, params: paramsSchema } = schemas;
@@ -49,14 +40,15 @@ const validateRequest = (schemas) => {
                     logger.error('validateRequest: Invalid body schema type', {
                         requestId: req.requestId,
                         url: req.originalUrl,
-                        schemaType: typeof bodySchema
+                        schemaType: typeof bodySchema,
+                        schemaKeys: bodySchema.shape ? Object.keys(bodySchema.shape) : null
                     });
                     return res.status(500).json(
                         errorResponse(
                             'Server configuration error: Invalid body schema',
                             500,
                             null,
-                            req.requestId || 'N/A'
+                            req.requestId
                         )
                     );
                 }
@@ -68,7 +60,7 @@ const validateRequest = (schemas) => {
                     schemaFields: bodySchema.shape ? Object.keys(bodySchema.shape) : null
                 });
 
-                const result = bodySchema.safeParse(input);
+                const result = await bodySchema.safeParseAsync(input);
                 if (!result.success) {
                     validationErrors.push({
                         field: 'body',
@@ -84,11 +76,6 @@ const validateRequest = (schemas) => {
                         validatedBody: req.validatedBody
                     });
                 }
-            } else {
-                logger.warn('validateRequest: No body schema for route', {
-                    requestId: req.requestId,
-                    url: req.originalUrl
-                });
             }
 
             // Validate query
@@ -100,7 +87,7 @@ const validateRequest = (schemas) => {
                     schemaFields: querySchema.shape ? Object.keys(querySchema.shape) : null
                 });
 
-                const result = querySchema.safeParse(input);
+                const result = await querySchema.safeParseAsync(input);
                 if (!result.success) {
                     validationErrors.push({
                         field: 'query',
@@ -127,7 +114,7 @@ const validateRequest = (schemas) => {
                     schemaFields: paramsSchema.shape ? Object.keys(paramsSchema.shape) : null
                 });
 
-                const result = paramsSchema.safeParse(input);
+                const result = await paramsSchema.safeParseAsync(input);
                 if (!result.success) {
                     validationErrors.push({
                         field: 'params',
@@ -147,7 +134,7 @@ const validateRequest = (schemas) => {
 
             if (validationErrors.length > 0) {
                 logger.warn('Request validation failed', {
-                    requestId: req.requestId || 'N/A',
+                    requestId: req.requestId,
                     method: req.method,
                     url: req.originalUrl,
                     errors: validationErrors
@@ -157,14 +144,14 @@ const validateRequest = (schemas) => {
                         'Invalid request data',
                         400,
                         validationErrors,
-                        req.requestId || 'N/A'
+                        req.requestId
                     )
                 );
             }
 
             // Log successful validation
             logger.info('Request validation succeeded', {
-                requestId: req.requestId || 'N/A',
+                requestId: req.requestId,
                 method: req.method,
                 url: req.originalUrl,
                 hasBody: !!req.validatedBody,
@@ -176,7 +163,7 @@ const validateRequest = (schemas) => {
             next();
         } catch (error) {
             logger.error('Validation middleware error', {
-                requestId: req.requestId || 'N/A',
+                requestId: req.requestId,
                 method: req.method,
                 url: req.originalUrl,
                 error: error.message,
@@ -187,7 +174,7 @@ const validateRequest = (schemas) => {
                     'Internal server error during validation',
                     500,
                     null,
-                    req.requestId || 'N/A'
+                    req.requestId
                 )
             );
         }

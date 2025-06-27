@@ -4,11 +4,12 @@ import { z } from 'zod';
 import zxcvbn from 'zxcvbn';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import { User } from '../models/User.js';
-import { env } from '../config/env.js';
 import logger from '../utils/logger.js';
 import { successResponse, errorResponse } from '../utils/response.js';
 import { sendErrorAlert } from '../utils/email.js';
+import { env } from '../config/env.js'; // Ensure env is imported at the top
 
 /**
  * Generates JWT access and refresh tokens.
@@ -16,17 +17,30 @@ import { sendErrorAlert } from '../utils/email.js';
  * @returns {Object} Access and refresh tokens
  */
 const generateTokens = (user) => {
-    const accessToken = jwt.sign(
-        { userId: user.id, email: user.email, role: user.role },
-        env.JWT_SECRET,
-        { expiresIn: '1h' }
-    );
-    const refreshToken = jwt.sign(
-        { userId: user.id, email: user.email, role: user.role },
-        env.JWT_REFRESH_SECRET,
-        { expiresIn: '7d' }
-    );
-    return { accessToken, refreshToken };
+    try {
+        if (!env.JWT_SECRET || !env.JWT_REFRESH_SECRET) {
+            throw new Error('JWT secrets are not defined');
+        }
+        const accessToken = jwt.sign(
+            { userId: user.id, email: user.email, role: user.role },
+            env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+        const refreshToken = jwt.sign(
+            { userId: user.id, email: user.email, role: user.role },
+            env.JWT_REFRESH_SECRET,
+            { expiresIn: '7d' }
+        );
+        return { accessToken, refreshToken };
+    } catch (error) {
+        logger.error('Error generating tokens', {
+            userId: user.id,
+            email: user.email,
+            error: error.message,
+            stack: error.stack
+        });
+        throw error;
+    }
 };
 
 /**
@@ -50,9 +64,10 @@ const sendWelcomeEmail = async (user, requestId) => {
         Timestamp: ${new Date().toISOString()}
         Request ID: ${requestId}
       `,
+            requestId
         };
 
-        await sendErrorAlert({ message: 'Welcome email sent' }, { ...mailOptions, requestId });
+        await sendErrorAlert({ message: 'Welcome email sent' }, mailOptions);
         logger.info('Welcome email sent', { userId: user._id, email: user.email, requestId });
     } catch (error) {
         logger.error('Failed to send welcome email', {
@@ -60,8 +75,9 @@ const sendWelcomeEmail = async (user, requestId) => {
             email: user.email,
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
+        // Do not throw error to avoid blocking registration
     }
 };
 
@@ -89,9 +105,10 @@ const sendPasswordResetEmail = async (user, token, requestId) => {
         Timestamp: ${new Date().toISOString()}
         Request ID: ${requestId}
       `,
+            requestId
         };
 
-        await sendErrorAlert({ message: 'Password reset email sent' }, { ...mailOptions, requestId });
+        await sendErrorAlert({ message: 'Password reset email sent' }, mailOptions);
         logger.info('Password reset email sent', { userId: user._id, email: user.email, requestId });
     } catch (error) {
         logger.error('Failed to send password reset email', {
@@ -99,18 +116,84 @@ const sendPasswordResetEmail = async (user, token, requestId) => {
             email: user.email,
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
+        // Do not throw error to avoid blocking password reset
     }
 };
 
 /**
- * Register a new user with strong password validation.
+ * Creates a wallet for a user with retry logic.
+ * @param {Object} user - User object
+ * @param {string} requestId - Request ID
+ * @returns {Object} Created wallet
+ */
+const createWalletWithRetry = async (user, requestId, maxRetries = 3) => {
+    let attempt = 0;
+    let wallet = null;
+
+    // Dynamic import to ensure Wallet model is available
+    const { Wallet } = await import('../models/Wallet.js');
+
+    while (attempt < maxRetries && !wallet) {
+        const session = await mongoose.startSession();
+        try {
+            session.startTransaction();
+
+            const existingWallet = await Wallet.findOne({ userId: user._id }).session(session);
+            if (existingWallet) {
+                logger.warn('Wallet already exists during retry', {
+                    userId: user._id,
+                    email: user.email,
+                    walletId: existingWallet._id,
+                    requestId
+                });
+                await session.commitTransaction();
+                return existingWallet;
+            }
+
+            wallet = new Wallet({ userId: user._id, balance: 0 });
+            await wallet.save({ session });
+
+            await session.commitTransaction();
+
+            logger.info('Wallet created successfully on attempt ' + (attempt + 1), {
+                userId: user._id,
+                email: user.email,
+                walletId: wallet._id,
+                requestId
+            });
+
+            return wallet;
+        } catch (error) {
+            await session.abortTransaction();
+            attempt++;
+            logger.error('Wallet creation failed on attempt ' + attempt, {
+                userId: user._id,
+                email: user.email,
+                requestId,
+                error: error.message,
+                stack: error.stack
+            });
+
+            if (attempt >= maxRetries) {
+                throw new Error(`Wallet creation failed after ${maxRetries} attempts: ${error.message}`);
+            }
+
+            // Wait before retrying
+            await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+        } finally {
+            session.endSession();
+        }
+    }
+};
+
+/**
+ * Register a new user with strong password validation and wallet creation.
  */
 export const register = async (req, res) => {
     const requestId = req.requestId;
     try {
-        // Log input for debugging
         logger.debug('register: Input received', {
             requestId,
             body: req.body,
@@ -118,12 +201,11 @@ export const register = async (req, res) => {
             validatedBody: req.validatedBody
         });
 
-        // Check if validatedBody exists
         if (!req.validatedBody) {
             logger.warn('Missing validated body in registration request', {
                 requestId,
                 body: req.body,
-                sanitizedBody: req.sanitizedBody,
+                sanitizedBody: req.sanitizedBody
             });
             return res.status(400).json(
                 errorResponse(
@@ -141,7 +223,7 @@ export const register = async (req, res) => {
             logger.warn('Weak password attempt during registration', {
                 requestId,
                 email,
-                score: passwordStrength.score,
+                score: passwordStrength.score
             });
             return res.status(400).json(
                 errorResponse(
@@ -174,28 +256,37 @@ export const register = async (req, res) => {
         const user = new User({ email, password, nin });
         await user.save();
 
-        await sendWelcomeEmail(user, requestId);
+        // Ensure wallet creation with retry
+        const wallet = await createWalletWithRetry(user, requestId);
 
-        logger.info('User registered successfully', {
+        // Send welcome email asynchronously
+        sendWelcomeEmail(user, requestId).catch(() => {
+            // Log error but don't block response
+            logger.error('Async welcome email failed', { userId: user._id, email: user.email, requestId });
+        });
+
+        logger.info('User registered successfully with wallet', {
             requestId,
             userId: user._id,
             email: user.email,
+            walletId: wallet._id
         });
 
         res.status(201).json(
             successResponse('User registered successfully. Please complete KYC verification.', 201, {
                 userId: user._id,
                 email: user.email,
+                walletId: wallet._id
             }, requestId)
         );
     } catch (error) {
         logger.error('Registration error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during registration', 500, null, requestId)
+            errorResponse(`Internal server error during registration: ${error.message}`, 500, null, requestId)
         );
     }
 };
@@ -217,7 +308,7 @@ export const login = async (req, res) => {
             logger.warn('Missing validated body in login request', {
                 requestId,
                 body: req.body,
-                sanitizedBody: req.sanitizedBody,
+                sanitizedBody: req.sanitizedBody
             });
             return res.status(400).json(
                 errorResponse(
@@ -239,10 +330,22 @@ export const login = async (req, res) => {
             );
         }
 
+        // Dynamic import for Wallet
+        const { Wallet } = await import('../models/Wallet.js');
+        const wallet = await Wallet.findOne({ userId: user._id }).select('userId');
+        if (!wallet) {
+            logger.warn('Wallet not found for user during login, attempting to create', {
+                requestId,
+                userId: user._id,
+                email: user.email
+            });
+            await createWalletWithRetry(user, requestId);
+        }
+
         const { accessToken, refreshToken } = generateTokens({
             id: user._id,
             email: user.email,
-            role: user.role,
+            role: user.role
         });
 
         user.sessions.push({
@@ -250,7 +353,7 @@ export const login = async (req, res) => {
             deviceId,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'] || 'unknown',
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
         });
 
         await user.cleanupSessions();
@@ -262,6 +365,7 @@ export const login = async (req, res) => {
             userId: user._id,
             email: user.email,
             deviceId,
+            walletId: wallet?._id
         });
 
         res.status(200).json(
@@ -269,16 +373,17 @@ export const login = async (req, res) => {
                 accessToken,
                 refreshToken,
                 user: { id: user._id, email: user.email, role: user.role, isVerified: user.isVerified },
+                walletId: wallet?._id
             }, requestId)
         );
     } catch (error) {
         logger.error('Login error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during login', 500, null, requestId)
+            errorResponse(`Internal server error during login: ${error.message}`, 500, null, requestId)
         );
     }
 };
@@ -300,7 +405,7 @@ export const refreshToken = async (req, res) => {
             logger.warn('Missing validated body in refresh token request', {
                 requestId,
                 body: req.body,
-                sanitizedBody: req.sanitizedBody,
+                sanitizedBody: req.sanitizedBody
             });
             return res.status(400).json(
                 errorResponse(
@@ -339,10 +444,22 @@ export const refreshToken = async (req, res) => {
             );
         }
 
+        // Dynamic import for Wallet
+        const { Wallet } = await import('../models/Wallet.js');
+        const wallet = await Wallet.findOne({ userId: user._id }).select('userId');
+        if (!wallet) {
+            logger.warn('Wallet not found for user during refresh, attempting to create', {
+                requestId,
+                userId: user._id,
+                email: user.email
+            });
+            await createWalletWithRetry(user, requestId);
+        }
+
         const { accessToken, refreshToken: newRefreshToken } = generateTokens({
             id: user._id,
             email: user.email,
-            role: user.role,
+            role: user.role
         });
 
         session.refreshToken = newRefreshToken;
@@ -352,23 +469,23 @@ export const refreshToken = async (req, res) => {
         logger.info('Token refreshed successfully', {
             requestId,
             userId: user._id,
-            email: user.email,
+            email: user.email
         });
 
         res.status(200).json(
             successResponse('Token refreshed successfully', 200, {
                 accessToken,
-                refreshToken: newRefreshToken,
+                refreshToken: newRefreshToken
             }, requestId)
         );
     } catch (error) {
         logger.error('Token refresh error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during token refresh', 500, null, requestId)
+            errorResponse(`Internal server error during token refresh: ${error.message}`, 500, null, requestId)
         );
     }
 };
@@ -387,10 +504,23 @@ export const getProfile = async (req, res) => {
             );
         }
 
+        // Dynamic import for Wallet
+        const { Wallet } = await import('../models/Wallet.js');
+        const wallet = await Wallet.findOne({ userId: user._id }).select('userId');
+        if (!wallet) {
+            logger.warn('Wallet not found for user profile, attempting to create', {
+                requestId,
+                userId: user._id,
+                email: user.email
+            });
+            await createWalletWithRetry(user, req.requestId);
+        }
+
         logger.info('User profile retrieved', {
             requestId,
             userId: user._id,
             email: user.email,
+            walletId: wallet?._id
         });
 
         res.status(200).json(
@@ -400,18 +530,19 @@ export const getProfile = async (req, res) => {
                     email: user.email,
                     role: user.role,
                     isVerified: user.isVerified,
-                    lastLogin: user.lastLogin,
+                    lastLogin: user.lastLogin
                 },
-            }, requestId)
+                walletId: wallet?._id
+            }, req.requestId)
         );
     } catch (error) {
         logger.error('Profile retrieval error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during profile retrieval', 500, null, req.requestId)
+            errorResponse(`Internal server error during profile retrieval: ${error.message}`, 500, null, req.requestId)
         );
     }
 };
@@ -430,22 +561,21 @@ export const logout = async (req, res) => {
             );
         }
 
-        const authHeader = req.headers.authorization;
-        const token = authHeader?.split(' ')[1];
-        if (!token) {
-            logger.warn('No token provided for logout', { requestId, userId: req.user.id });
+        const { refreshToken } = req.body;
+        if (!refreshToken) {
+            logger.warn('No refresh token provided for logout', { requestId, userId: req.user.id });
             return res.status(400).json(
-                errorResponse('No token provided', 400, null, req.requestId)
+                errorResponse('No refresh token provided', 400, null, req.requestId)
             );
         }
 
-        user.sessions = user.sessions.filter((s) => s.refreshToken !== token);
+        user.sessions = user.sessions.filter((s) => s.refreshToken !== refreshToken);
         await user.save();
 
         logger.info('User logged out successfully', {
             requestId,
             userId: user._id,
-            email: user.email,
+            email: user.email
         });
 
         res.status(200).json(
@@ -455,14 +585,13 @@ export const logout = async (req, res) => {
         logger.error('Logout error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during logout', 500, null, req.requestId)
+            errorResponse(`Internal server error during logout: ${error.message}`, 500, null, req.requestId)
         );
     }
 };
-
 /**
  * Logout from all sessions.
  */
@@ -483,7 +612,7 @@ export const logoutAll = async (req, res) => {
         logger.info('User logged out from all devices', {
             requestId,
             userId: user._id,
-            email: user.email,
+            email: user.email
         });
 
         res.status(200).json(
@@ -493,10 +622,10 @@ export const logoutAll = async (req, res) => {
         logger.error('Logout all error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during logout all', 500, null, req.requestId)
+            errorResponse(`Internal server error during logout all: ${error.message}`, 500, null, req.requestId)
         );
     }
 };
@@ -518,7 +647,7 @@ export const requestPasswordReset = async (req, res) => {
             logger.warn('Missing validated body in password reset request', {
                 requestId,
                 body: req.body,
-                sanitizedBody: req.sanitizedBody,
+                sanitizedBody: req.sanitizedBody
             });
             return res.status(400).json(
                 errorResponse(
@@ -555,10 +684,10 @@ export const requestPasswordReset = async (req, res) => {
         logger.error('Password reset request error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during password reset request', 500, null, req.requestId)
+            errorResponse(`Internal server error during password reset request: ${error.message}`, 500, null, req.requestId)
         );
     }
 };
@@ -580,7 +709,7 @@ export const resetPassword = async (req, res) => {
             logger.warn('Missing validated body in password reset request', {
                 requestId,
                 body: req.body,
-                sanitizedBody: req.sanitizedBody,
+                sanitizedBody: req.sanitizedBody
             });
             return res.status(400).json(
                 errorResponse(
@@ -597,7 +726,7 @@ export const resetPassword = async (req, res) => {
         if (passwordStrength.score < 3) {
             logger.warn('Weak password attempt during reset', {
                 requestId,
-                score: passwordStrength.score,
+                score: passwordStrength.score
             });
             return res.status(400).json(
                 errorResponse(
@@ -611,7 +740,7 @@ export const resetPassword = async (req, res) => {
 
         const user = await User.findOne({
             passwordResetToken: token,
-            passwordResetExpires: { $gt: new Date() },
+            passwordResetExpires: { $gt: new Date() }
         }).select('+passwordResetToken +passwordResetExpires +password');
 
         if (!user) {
@@ -629,7 +758,7 @@ export const resetPassword = async (req, res) => {
         logger.info('Password reset successfully', {
             requestId,
             userId: user._id,
-            email: user.email,
+            email: user.email
         });
 
         res.status(200).json(
@@ -639,10 +768,53 @@ export const resetPassword = async (req, res) => {
         logger.error('Password reset error', {
             requestId,
             error: error.message,
-            stack: error.stack,
+            stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during password reset', 500, null, req.requestId)
+            errorResponse(`Internal server error during password reset: ${error.message}`, 500, null, req.requestId)
+        );
+    }
+};
+
+/**
+ * Create wallet for existing user (admin only).
+ */
+export const createWalletForUser = async (req, res) => {
+    const requestId = req.requestId;
+    try {
+        const { email } = req.validatedBody;
+        const user = await User.findOne({ email });
+        if (!user) {
+            logger.warn('User not found for wallet creation', { requestId, email });
+            return res.status(404).json(
+                errorResponse('User not found', 404, null, requestId)
+            );
+        }
+
+        const wallet = await createWalletWithRetry(user, requestId);
+
+        logger.info('Wallet created for existing user', {
+            requestId,
+            userId: user._id,
+            email: user.email,
+            walletId: wallet._id
+        });
+
+        res.status(201).json(
+            successResponse('Wallet created successfully for user', 201, {
+                userId: user._id,
+                email: user.email,
+                walletId: wallet._id
+            }, requestId)
+        );
+    } catch (error) {
+        logger.error('Error creating wallet for existing user', {
+            requestId,
+            error: error.message,
+            stack: error.stack
+        });
+        res.status(500).json(
+            errorResponse(`Internal server error during wallet creation: ${error.message}`, 500, null, requestId)
         );
     }
 };
@@ -656,4 +828,5 @@ export default {
     logoutAll,
     requestPasswordReset,
     resetPassword,
+    createWalletForUser
 };

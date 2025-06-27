@@ -1,11 +1,10 @@
 // src/utils/email.js
 import nodemailer from 'nodemailer';
-import { env } from '../config/env.js';
 import logger from './logger.js';
+import { env } from '../config/env.js';
 
 /**
- * Configures Nodemailer transport for sending error alerts.
- * @returns {nodemailer.Transporter} Configured transporter
+ * Initializes nodemailer transporter for sending emails.
  */
 const transporter = nodemailer.createTransport({
     service: env.EMAIL_SERVICE,
@@ -16,32 +15,35 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * Sends an email alert for critical errors.
- * @param {Error} error - The error object
- * @param {Object} context - Additional context (e.g., request data)
- * @returns {Promise<void>}
+ * Sends an email with error alerting capabilities.
+ * @param {Object} errorDetails - Error details for logging
+ * @param {Object} mailOptions - Nodemailer mail options
+ * @param {string} mailOptions.requestId - Request ID for tracking
  */
-export const sendErrorAlert = async (error, context = {}) => {
+export const sendErrorAlert = async (errorDetails, mailOptions) => {
     try {
-        const mailOptions = {
-            from: env.EMAIL_USER,
-            to: env.EMAIL_USER, // Replace with admin email in production
-            subject: `Critical Error in NEG AI Banking Platform [${env.NODE_ENV}]`,
-            text: `
-        Error: ${error.message}
-        Stack: ${error.stack}
-        Context: ${JSON.stringify(context, null, 2)}
-        Timestamp: ${new Date().toISOString()}
-        Environment: ${env.NODE_ENV}
-        `
-        };
+        if (!env.EMAIL_USER || !env.EMAIL_PASS || !env.EMAIL_SERVICE) {
+            throw new Error('Email configuration is incomplete');
+        }
 
-        await transporter.sendMail(mailOptions);
-        logger.info('Error alert email sent successfully', { error: error.message });
-    } catch (err) {
-        logger.error('Failed to send error alert email', {
-            error: err.message,
-            originalError: error.message
+        await transporter.sendMail({
+            ...mailOptions,
+            from: `"NEG AI Banking Platform" <${env.EMAIL_USER}>`
         });
+
+        logger.info('Email sent successfully', {
+            requestId: mailOptions.requestId,
+            to: mailOptions.to,
+            subject: mailOptions.subject
+        });
+    } catch (error) {
+        logger.error('Failed to send email', {
+            requestId: mailOptions.requestId,
+            error: error.message,
+            stack: error.stack,
+            to: mailOptions.to,
+            subject: mailOptions.subject
+        });
+        throw error; // Propagate error to caller
     }
 };

@@ -6,6 +6,7 @@ import corsMiddleware from './middlewares/corsMiddleware.js';
 import requestIdMiddleware from './middlewares/requestId.js';
 import securityMiddleware from './middlewares/securityMiddleware.js';
 import authRoutes from './routes/authRoutes.js';
+import walletRoutes from './routes/walletRoutes.js';
 import morgan from 'morgan';
 import { env } from './config/env.js';
 import logger from './utils/logger.js';
@@ -56,7 +57,8 @@ app.get('/favicon.ico', (req, res) => {
 });
 
 // Authentication routes
-app.use('/api/auth', authRoutes)
+app.use('/api/auth', authRoutes);
+app.use('/api/wallet', walletRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

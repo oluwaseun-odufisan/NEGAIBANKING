@@ -43,7 +43,7 @@ const authMiddleware = async (req, res, next) => {
         }
 
         const user = await User.findById(decoded.userId)
-            .select('+sessions')
+            .select('email role isVerified')
             .lean();
         if (!user) {
             logger.warn('User not found for JWT', {
@@ -52,18 +52,6 @@ const authMiddleware = async (req, res, next) => {
             });
             return res.status(401).json(
                 errorResponse('Unauthorized: User not found', 401, null, req.requestId)
-            );
-        }
-
-        // Verify session
-        const session = user.sessions.find((s) => s.refreshToken === token);
-        if (!session || session.expiresAt < new Date()) {
-            logger.warn('Invalid or expired session', {
-                requestId: req.requestId,
-                userId: decoded.userId
-            });
-            return res.status(401).json(
-                errorResponse('Unauthorized: Session expired or invalid', 401, null, req.requestId)
             );
         }
 

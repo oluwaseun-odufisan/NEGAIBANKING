@@ -1,12 +1,23 @@
 // src/config/env.js
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Resolve __dirname for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables from .env file
-dotenv.config();
+const envPath = path.resolve(__dirname, '../../.env');
+const result = dotenv.config({ path: envPath });
+
+if (result.error) {
+    console.error('Failed to load .env file:', result.error.message);
+    process.exit(1);
+}
 
 /**
  * List of required environment variables for the digital banking platform.
- * Ensures all critical configurations are present to prevent runtime errors.
  */
 const requiredEnvVars = [
     'PORT',
@@ -18,9 +29,6 @@ const requiredEnvVars = [
     'ENCRYPTION_IV',
     'FLUTTERWAVE_SECRET_KEY',
     'FLUTTERWAVE_PUBLIC_KEY',
-    'CLOUDINARY_API_KEY',
-    'CLOUDINARY_SECRET',
-    'CLOUDINARY_CLOUD_NAME',
     'EMAIL_SERVICE',
     'EMAIL_USER',
     'EMAIL_PASS',
@@ -30,8 +38,19 @@ const requiredEnvVars = [
 ];
 
 /**
- * Check for missing environment variables and exit if any are absent.
- * Logs missing variables for debugging.
+ * List of optional environment variables.
+ */
+const optionalEnvVars = [
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_SECRET',
+    'CLOUDINARY_CLOUD_NAME',
+    'NIMC_API_KEY',
+    'YOUVERIFY_API_KEY',
+    'SMILE_IDENTITY_API_KEY'
+];
+
+/**
+ * Check for missing required environment variables and exit if any are absent.
  */
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingEnvVars.length > 0) {
@@ -44,7 +63,6 @@ if (missingEnvVars.length > 0) {
 
 /**
  * Validate specific environment variables for correct format or length.
- * Ensures security and compatibility for banking-grade requirements.
  */
 if (process.env.JWT_SECRET.length < 64) {
     console.error('JWT_SECRET must be at least 64 characters long');
@@ -69,7 +87,6 @@ if (!['development', 'production', 'test'].includes(process.env.NODE_ENV)) {
 
 /**
  * Configuration object for environment variables.
- * Provides type coercion and defaults where applicable.
  * @type {Object}
  */
 export const env = {
@@ -88,10 +105,10 @@ export const env = {
     NIMC_API_KEY: process.env.NIMC_API_KEY || '',
     YOUVERIFY_API_KEY: process.env.YOUVERIFY_API_KEY || '',
     SMILE_IDENTITY_API_KEY: process.env.SMILE_IDENTITY_API_KEY || '',
-    CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
-    CLOUDINARY_SECRET: process.env.CLOUDINARY_SECRET,
-    CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',
+    CLOUDINARY_SECRET: process.env.CLOUDINARY_SECRET || '',
+    CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
     EMAIL_SERVICE: process.env.EMAIL_SERVICE,
     EMAIL_USER: process.env.EMAIL_USER,
-    EMAIL_PASS: process.env.EMAIL_PASS,
+    EMAIL_PASS: process.env.EMAIL_PASS
 };

@@ -43,36 +43,6 @@ export const connectDB = async () => {
         }
     }
 
-    // Initialize collections and indexes on successful connection
-    mongoose.connection.on('connected', async () => {
-        try {
-            const db = mongoose.connection.db;
-            // Ensure core collections exist
-            await db.createCollection('wallets');
-            await db.createCollection('transactions');
-            await db.createCollection('kycs');
-            await db.createCollection('notifications');
-            await db.createCollection('auditlogs');
-
-            // Create indexes for performance and compliance
-            await db.collection('wallets').createIndex({ userId: 1 }, { unique: true });
-            await db.collection('transactions').createIndex({ userId: 1, createdAt: -1 });
-            await db.collection('kycs').createIndex({ userId: 1 }, { unique: true });
-            await db.collection('notifications').createIndex({ userId: 1, createdAt: -1 });
-            await db.collection('auditlogs').createIndex({ action: 1, createdAt: -1 });
-
-            logger.info('MongoDB collections and indexes initialized successfully', {
-                service: 'NEG-AI-banking-backend'
-            });
-        } catch (error) {
-            logger.error('Error initializing collections', {
-                error: error.message,
-                stack: error.stack,
-                service: 'NEG-AI-banking-backend'
-            });
-        }
-    });
-
     // Handle connection errors
     mongoose.connection.on('error', error => {
         logger.error('MongoDB connection error', {

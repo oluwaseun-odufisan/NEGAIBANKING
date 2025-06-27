@@ -13,7 +13,7 @@ import { sendErrorAlert } from '../utils/email.js';
  */
 
 /**
- * Sends transaction notification email.
+ * Sends transaction notification email to the user's email.
  * @param {Object} user - User object
  * @param {Object} transaction - Transaction details
  * @param {string} requestId - Request ID
@@ -34,8 +34,7 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
         }
 
         const mailOptions = {
-            from: env.EMAIL_USER,
-            to: user.email,
+            to: user.email, // Send to user's email
             subject: `Transaction ${transaction.type === 'credit' ? 'Received' : 'Sent'} - NEG AI Banking Platform`,
             text: `
         Dear ${user.email},
@@ -53,7 +52,15 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
             requestId
         };
 
-        await sendErrorAlert({ message: `Transaction email sent for ${transaction.type}` }, mailOptions);
+        logger.debug('Preparing to send transaction email', {
+            userId: user._id,
+            email: user.email,
+            transactionId: transaction._id,
+            requestId,
+            recipient: mailOptions.to
+        });
+
+        await sendErrorAlert({ message: `Transaction email sent for ${transaction.type}`, type: 'transaction' }, mailOptions);
         logger.info('Transaction email sent', {
             userId: user._id,
             email: user.email,
@@ -162,14 +169,14 @@ const initiateFlutterwavePayment = async (user, amount, reference, requestId) =>
             error: error.response?.data || error.message,
             stack: error.stack
         });
-        // Only send error email if user.email is valid
-        if (user?.email) {
+        // Send error email to EMAIL_USER
+        if (env.EMAIL_USER) {
             await sendErrorAlert(
-                { message: 'Failed to initiate Flutterwave payment' },
+                { message: 'Failed to initiate Flutterwave payment', type: 'error' },
                 {
-                    to: user.email,
+                    to: env.EMAIL_USER, // Send to admin email
                     subject: 'Payment Initiation Failed - NEG AI Banking Platform',
-                    text: `Failed to initiate payment. Error: ${error.message}. Request ID: ${requestId}`,
+                    text: `Failed to initiate payment for user ${user.email}. Error: ${error.message}. Request ID: ${requestId}`,
                     requestId
                 }
             );
@@ -215,6 +222,18 @@ const verifyFlutterwavePayment = async (transactionId, requestId) => {
             error: error.response?.data || error.message,
             stack: error.stack
         });
+        // Send error email to EMAIL_USER
+        if (env.EMAIL_USER) {
+            await sendErrorAlert(
+                { message: 'Failed to verify Flutterwave payment', type: 'error' },
+                {
+                    to: env.EMAIL_USER, // Send to admin email
+                    subject: 'Payment Verification Failed - NEG AI Banking Platform',
+                    text: `Failed to verify payment for transaction ${transactionId}. Error: ${error.message}. Request ID: ${requestId}`,
+                    requestId
+                }
+            );
+        }
         throw new Error(`Failed to verify payment with Flutterwave: ${error.response?.data?.message || error.message}`);
     }
 };
@@ -303,6 +322,18 @@ const creditWallet = async ({
             error: error.message,
             stack: error.stack
         });
+        // Send error email to EMAIL_USER
+        if (env.EMAIL_USER) {
+            await sendErrorAlert(
+                { message: 'Error crediting wallet', type: 'error' },
+                {
+                    to: env.EMAIL_USER, // Send to admin email
+                    subject: 'Wallet Credit Failed - NEG AI Banking Platform',
+                    text: `Failed to credit wallet for user ${userId}. Error: ${error.message}. Request ID: ${requestId}`,
+                    requestId
+                }
+            );
+        }
         throw error;
     } finally {
         session.endSession();
@@ -396,6 +427,18 @@ const debitWallet = async ({
             error: error.message,
             stack: error.stack
         });
+        // Send error email to EMAIL_USER
+        if (env.EMAIL_USER) {
+            await sendErrorAlert(
+                { message: 'Error debiting wallet', type: 'error' },
+                {
+                    to: env.EMAIL_USER, // Send to admin email
+                    subject: 'Wallet Debit Failed - NEG AI Banking Platform',
+                    text: `Failed to debit wallet for user ${userId}. Error: ${error.message}. Request ID: ${requestId}`,
+                    requestId
+                }
+            );
+        }
         throw error;
     } finally {
         session.endSession();
@@ -519,6 +562,18 @@ const transferFunds = async ({
             error: error.message,
             stack: error.stack
         });
+        // Send error email to EMAIL_USER
+        if (env.EMAIL_USER) {
+            await sendErrorAlert(
+                { message: 'Error transferring funds', type: 'error' },
+                {
+                    to: env.EMAIL_USER, // Send to admin email
+                    subject: 'Transfer Failed - NEG AI Banking Platform',
+                    text: `Failed to transfer funds from ${senderId} to ${recipientEmail}. Error: ${error.message}. Request ID: ${requestId}`,
+                    requestId
+                }
+            );
+        }
         throw error;
     } finally {
         session.endSession();

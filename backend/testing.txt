@@ -8,7 +8,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzE
 
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5ODQ2OSwiZXhwIjoxNzUxMDAyMDY5fQ.-5a-8RfvkNdPwvUE_xUnLOYFTCBzDNAhkiSG2_3rFNw" -d '{"amount":10100}' http://localhost:3000/api/wallet/fund
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5ODQ2OSwiZXhwIjoxNzUxMDAyMDY5fQ.-5a-8RfvkNdPwvUE_xUnLOYFTCBzDNAhkiSG2_3rFNw" -d '{"amount":64000}' http://localhost:3000/api/wallet/fund
 
 
 
@@ -16,7 +16,7 @@ curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhb
 
 
 
-{"status":"success","message":"Payment initiated successfully","data":{"paymentUrl":"https://checkout-v2.dev-flutterwave.com/v3/hosted/pay/f4a845fa1eece77c7f3a","reference":"FUND-6b757a46-9c5c-4de4-b35c-6892237f66df","walletId":"685da83cc5ec2765ddf313e1"},"requestId":"0936429e-8f3d-45f9-a3b0-f726c7c60abd","timestamp":"2025-06-27T03:24:09.481Z"}%   
+{"status":"success","message":"Payment initiated successfully","data":{"paymentUrl":"https://checkout-v2.dev-flutterwave.com/v3/hosted/pay/da04bba1e821e2c03b7d","reference":"FUND-6d1603c0-81d1-4280-830d-a85f26570ea3","walletId":"685da83cc5ec2765ddf313e1"},"requestId":"13fcd006-e84c-45a4-9f81-51d2b11bc196","timestamp":"2025-06-27T04:47:55.866Z"}%      
 
 
 https://068d-197-210-29-66.ngrok-fre
@@ -25,7 +25,7 @@ https://068d-197-210-29-66.ngrok-fre
 curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5MzYyNiwiZXhwIjoxNzUwOTk3MjI2fQ.vGS2Dm4v60oJFtvBsRJoLpbp5Z286u7KmDIWyyqG0CI" -d '{"reference":"FUND-61fac7a8-b150-4a4f-9278-46ed8538208c"}' http://localhost:3000/api/wallet/verify-by-reference
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5MDg4MSwiZXhwIjoxNzUwOTk0NDgxfQ.vQXi7ZyXSyPcQLNpAQlD3fukQMYToYciShePGTwU3xM" -d '{"transactionId":"32a82e4e-e35f-45b1-8cba-1a0f34f50f79","reference":"FUND-1ef0abb5-5e1d-4cff-b853-feede847360d"}' http://localhost:3000/api/wallet/verify-payment
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5ODQ2OSwiZXhwIjoxNzUxMDAyMDY5fQ.-5a-8RfvkNdPwvUE_xUnLOYFTCBzDNAhkiSG2_3rFNw" -d '{"transactionId":"9451993","reference":"FUND-6d1603c0-81d1-4280-830d-a85f26570ea3"}' http://localhost:3000/api/wallet/verify-payment
 
 
 curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer <accessToken>" -d '{"recipientEmail":"user2@example.com","amount":5000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer

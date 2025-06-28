@@ -18,7 +18,8 @@ const router = express.Router();
  */
 const fundSchema = {
     body: z.object({
-        amount: z.number().positive('Amount must be positive').max(1000000, 'Amount cannot exceed NGN 1,000,000')
+        amount: z.number().positive('Amount must be positive').max(1000000, 'Amount cannot exceed NGN 1,000,000'),
+        accountNumber: z.string().regex(/^\d{10}$/, 'Account number must be 10 digits')
     })
 };
 
@@ -31,7 +32,7 @@ const verifyPaymentSchema = {
 
 const transferSchema = {
     body: z.object({
-        recipientEmail: z.string().email('Invalid email format'),
+        recipientAccountNumber: z.string().regex(/^\d{10}$/, 'Recipient account number must be 10 digits'),
         amount: z.number().positive('Amount must be positive').max(500000, 'Amount cannot exceed NGN 500,000'),
         description: z.string().max(200, 'Description cannot exceed 200 characters').optional()
     })
@@ -64,8 +65,8 @@ logger.debug('walletRoutes: Schema definitions', {
 
 // Rate limiter for wallet endpoints
 const walletRateLimiter = rateLimiter({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // 10 requests per IP
+    windowMs: 15 * 60 * 1000,
+    max: 10,
     message: async (req) => ({
         status: 'error',
         message: 'Too many wallet requests. Please try again after 15 minutes.',

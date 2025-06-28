@@ -1,4 +1,3 @@
-// src/routes/authRoutes.js
 import express from 'express';
 import validateRequest from '../middlewares/validateRequest.js';
 import { z } from 'zod';
@@ -27,6 +26,9 @@ const registerSchema = {
     body: z.object({
         email: z.string().email({ message: 'Invalid email format' }),
         password: z.string().min(8, { message: 'Password must be at least 8 characters' }),
+        firstName: z.string().min(2, { message: 'First name must be at least 2 characters' }).max(50, { message: 'First name cannot exceed 50 characters' }),
+        lastName: z.string().min(2, { message: 'Last name must be at least 2 characters' }).max(50, { message: 'Last name cannot exceed 50 characters' }),
+        phoneNumber: z.string().regex(/^\+234\d{10}$/, { message: 'Phone number must be a valid Nigerian number starting with +234 followed by 10 digits' }),
         nin: z.string().length(11, { message: 'NIN must be 11 digits' }).optional()
     })
 };

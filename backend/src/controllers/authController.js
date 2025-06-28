@@ -1,4 +1,3 @@
-// src/controllers/authController.js
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import zxcvbn from 'zxcvbn';
@@ -9,7 +8,7 @@ import { User } from '../models/User.js';
 import logger from '../utils/logger.js';
 import { successResponse, errorResponse } from '../utils/response.js';
 import { sendErrorAlert } from '../utils/email.js';
-import { env } from '../config/env.js'; // Ensure env is imported at the top
+import { env } from '../config/env.js';
 
 /**
  * Generates JWT access and refresh tokens.
@@ -55,9 +54,10 @@ const sendWelcomeEmail = async (user, requestId) => {
             to: user.email,
             subject: 'Welcome to NEG AI Banking Platform',
             text: `
-        Welcome to NEG AI Banking Platform, ${user.email}!
+        Dear ${user.firstName} ${user.lastName},
         
-        Your account has been successfully created. To complete your profile and access all features, please complete your KYC verification.
+        Your account has been successfully created with account number ${user.accountNumber}. 
+        To complete your profile and access all features, please complete your KYC verification.
         
         For support, contact support@negaibanking.com.
         
@@ -67,8 +67,8 @@ const sendWelcomeEmail = async (user, requestId) => {
             requestId
         };
 
-        await sendErrorAlert({ message: 'Welcome email sent' }, mailOptions);
-        logger.info('Welcome email sent', { userId: user._id, email: user.email, requestId });
+        await sendErrorAlert({ message: 'Welcome email sent', type: 'welcome' }, mailOptions);
+        logger.info('Welcome email sent', { userId: user._id, email: user.email, accountNumber: user.accountNumber, requestId });
     } catch (error) {
         logger.error('Failed to send welcome email', {
             userId: user._id,
@@ -77,7 +77,6 @@ const sendWelcomeEmail = async (user, requestId) => {
             error: error.message,
             stack: error.stack
         });
-        // Do not throw error to avoid blocking registration
     }
 };
 
@@ -95,9 +94,10 @@ const sendPasswordResetEmail = async (user, token, requestId) => {
             to: user.email,
             subject: 'Password Reset Request - NEG AI Banking Platform',
             text: `
-        Dear ${user.email},
+        Dear ${user.firstName} ${user.lastName},
         
-        You requested a password reset. Click the link below to reset your password:
+        You requested a password reset for account number ${user.accountNumber}. 
+        Click the link below to reset your password:
         ${resetUrl}
         
         This link expires in 24 hours. If you did not request this, please contact support@negaibanking.com.
@@ -108,8 +108,8 @@ const sendPasswordResetEmail = async (user, token, requestId) => {
             requestId
         };
 
-        await sendErrorAlert({ message: 'Password reset email sent' }, mailOptions);
-        logger.info('Password reset email sent', { userId: user._id, email: user.email, requestId });
+        await sendErrorAlert({ message: 'Password reset email sent', type: 'password_reset' }, mailOptions);
+        logger.info('Password reset email sent', { userId: user._id, email: user.email, accountNumber: user.accountNumber, requestId });
     } catch (error) {
         logger.error('Failed to send password reset email', {
             userId: user._id,
@@ -118,7 +118,6 @@ const sendPasswordResetEmail = async (user, token, requestId) => {
             error: error.message,
             stack: error.stack
         });
-        // Do not throw error to avoid blocking password reset
     }
 };
 
@@ -132,7 +131,6 @@ const createWalletWithRetry = async (user, requestId, maxRetries = 3) => {
     let attempt = 0;
     let wallet = null;
 
-    // Dynamic import to ensure Wallet model is available
     const { Wallet } = await import('../models/Wallet.js');
 
     while (attempt < maxRetries && !wallet) {
@@ -152,7 +150,7 @@ const createWalletWithRetry = async (user, requestId, maxRetries = 3) => {
                 return existingWallet;
             }
 
-            wallet = new Wallet({ userId: user._id, balance: 0 });
+            wallet = new Wallet({ userId: user._id, balance: 0, accountNumber: user.accountNumber });
             await wallet.save({ session });
 
             await session.commitTransaction();
@@ -161,6 +159,7 @@ const createWalletWithRetry = async (user, requestId, maxRetries = 3) => {
                 userId: user._id,
                 email: user.email,
                 walletId: wallet._id,
+                accountNumber: user.accountNumber,
                 requestId
             });
 
@@ -180,7 +179,6 @@ const createWalletWithRetry = async (user, requestId, maxRetries = 3) => {
                 throw new Error(`Wallet creation failed after ${maxRetries} attempts: ${error.message}`);
             }
 
-            // Wait before retrying
             await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
         } finally {
             session.endSession();
@@ -217,7 +215,7 @@ export const register = async (req, res) => {
             );
         }
 
-        const { email, password, nin } = req.validatedBody;
+        const { email, password, nin, firstName, lastName, phoneNumber } = req.validatedBody;
         const passwordStrength = zxcvbn(password);
         if (passwordStrength.score < 3) {
             logger.warn('Weak password attempt during registration', {
@@ -235,11 +233,11 @@ export const register = async (req, res) => {
             );
         }
 
-        const existingUser = await User.findOne({ email }).select('+nin');
+        const existingUser = await User.findOne({ $or: [{ email }, { phoneNumber }, { accountNumber: phoneNumber.slice(4) }] }).select('+nin');
         if (existingUser) {
-            logger.warn('User already exists', { requestId, email });
+            logger.warn('User already exists', { requestId, email, phoneNumber });
             return res.status(409).json(
-                errorResponse('Email already registered', 409, null, requestId)
+                errorResponse('Email, phone number, or account number already registered', 409, null, requestId)
             );
         }
 
@@ -253,15 +251,12 @@ export const register = async (req, res) => {
             }
         }
 
-        const user = new User({ email, password, nin });
+        const user = new User({ email, password, nin, firstName, lastName, phoneNumber });
         await user.save();
 
-        // Ensure wallet creation with retry
         const wallet = await createWalletWithRetry(user, requestId);
 
-        // Send welcome email asynchronously
         sendWelcomeEmail(user, requestId).catch(() => {
-            // Log error but don't block response
             logger.error('Async welcome email failed', { userId: user._id, email: user.email, requestId });
         });
 
@@ -269,6 +264,7 @@ export const register = async (req, res) => {
             requestId,
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             walletId: wallet._id
         });
 
@@ -276,6 +272,7 @@ export const register = async (req, res) => {
             successResponse('User registered successfully. Please complete KYC verification.', 201, {
                 userId: user._id,
                 email: user.email,
+                accountNumber: user.accountNumber,
                 walletId: wallet._id
             }, requestId)
         );
@@ -330,9 +327,8 @@ export const login = async (req, res) => {
             );
         }
 
-        // Dynamic import for Wallet
         const { Wallet } = await import('../models/Wallet.js');
-        const wallet = await Wallet.findOne({ userId: user._id }).select('userId');
+        const wallet = await Wallet.findOne({ userId: user._id }).select('userId accountNumber');
         if (!wallet) {
             logger.warn('Wallet not found for user during login, attempting to create', {
                 requestId,
@@ -353,7 +349,7 @@ export const login = async (req, res) => {
             deviceId,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'] || 'unknown',
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         });
 
         await user.cleanupSessions();
@@ -364,6 +360,7 @@ export const login = async (req, res) => {
             requestId,
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             deviceId,
             walletId: wallet?._id
         });
@@ -372,7 +369,7 @@ export const login = async (req, res) => {
             successResponse('Login successful', 200, {
                 accessToken,
                 refreshToken,
-                user: { id: user._id, email: user.email, role: user.role, isVerified: user.isVerified },
+                user: { id: user._id, email: user.email, role: user.role, isVerified: user.isVerified, accountNumber: user.accountNumber },
                 walletId: wallet?._id
             }, requestId)
         );
@@ -444,9 +441,8 @@ export const refreshToken = async (req, res) => {
             );
         }
 
-        // Dynamic import for Wallet
         const { Wallet } = await import('../models/Wallet.js');
-        const wallet = await Wallet.findOne({ userId: user._id }).select('userId');
+        const wallet = await Wallet.findOne({ userId: user._id }).select('userId accountNumber');
         if (!wallet) {
             logger.warn('Wallet not found for user during refresh, attempting to create', {
                 requestId,
@@ -469,7 +465,8 @@ export const refreshToken = async (req, res) => {
         logger.info('Token refreshed successfully', {
             requestId,
             userId: user._id,
-            email: user.email
+            email: user.email,
+            accountNumber: user.accountNumber
         });
 
         res.status(200).json(
@@ -496,7 +493,7 @@ export const refreshToken = async (req, res) => {
 export const getProfile = async (req, res) => {
     const requestId = req.requestId;
     try {
-        const user = await User.findById(req.user.id).select('email role isVerified lastLogin');
+        const user = await User.findById(req.user.id).select('email role isVerified lastLogin firstName lastName accountNumber');
         if (!user) {
             logger.warn('User not found for profile', { requestId, userId: req.user.id });
             return res.status(404).json(
@@ -504,9 +501,8 @@ export const getProfile = async (req, res) => {
             );
         }
 
-        // Dynamic import for Wallet
         const { Wallet } = await import('../models/Wallet.js');
-        const wallet = await Wallet.findOne({ userId: user._id }).select('userId');
+        const wallet = await Wallet.findOne({ userId: user._id }).select('userId accountNumber');
         if (!wallet) {
             logger.warn('Wallet not found for user profile, attempting to create', {
                 requestId,
@@ -520,6 +516,7 @@ export const getProfile = async (req, res) => {
             requestId,
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             walletId: wallet?._id
         });
 
@@ -530,7 +527,10 @@ export const getProfile = async (req, res) => {
                     email: user.email,
                     role: user.role,
                     isVerified: user.isVerified,
-                    lastLogin: user.lastLogin
+                    lastLogin: user.lastLogin,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    accountNumber: user.accountNumber
                 },
                 walletId: wallet?._id
             }, req.requestId)
@@ -575,7 +575,8 @@ export const logout = async (req, res) => {
         logger.info('User logged out successfully', {
             requestId,
             userId: user._id,
-            email: user.email
+            email: user.email,
+            accountNumber: user.accountNumber
         });
 
         res.status(200).json(
@@ -592,6 +593,7 @@ export const logout = async (req, res) => {
         );
     }
 };
+
 /**
  * Logout from all sessions.
  */
@@ -612,7 +614,8 @@ export const logoutAll = async (req, res) => {
         logger.info('User logged out from all devices', {
             requestId,
             userId: user._id,
-            email: user.email
+            email: user.email,
+            accountNumber: user.accountNumber
         });
 
         res.status(200).json(
@@ -670,12 +673,12 @@ export const requestPasswordReset = async (req, res) => {
 
         const resetToken = crypto.randomBytes(32).toString('hex');
         user.passwordResetToken = resetToken;
-        user.passwordResetExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        user.passwordResetExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await user.save();
 
         await sendPasswordResetEmail(user, resetToken, requestId);
 
-        logger.info('Password reset requested', { requestId, userId: user._id, email });
+        logger.info('Password reset requested', { requestId, userId: user._id, email, accountNumber: user.accountNumber });
 
         res.status(200).json(
             successResponse('Password reset email sent', 200, null, req.requestId)
@@ -758,7 +761,8 @@ export const resetPassword = async (req, res) => {
         logger.info('Password reset successfully', {
             requestId,
             userId: user._id,
-            email: user.email
+            email: user.email,
+            accountNumber: user.accountNumber
         });
 
         res.status(200).json(
@@ -797,6 +801,7 @@ export const createWalletForUser = async (req, res) => {
             requestId,
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             walletId: wallet._id
         });
 
@@ -804,6 +809,7 @@ export const createWalletForUser = async (req, res) => {
             successResponse('Wallet created successfully for user', 201, {
                 userId: user._id,
                 email: user.email,
+                accountNumber: user.accountNumber,
                 walletId: wallet._id
             }, requestId)
         );

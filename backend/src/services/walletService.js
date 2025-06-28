@@ -29,21 +29,25 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
             return;
         }
         if (!env.EMAIL_USER || !env.EMAIL_PASS || !env.EMAIL_SERVICE) {
-            logger.warn('Email configuration is incomplete', { requestId });
+            logger.warn('Email configuration is incomplete', {
+                requestId,
+                emailUser: env.EMAIL_USER ? 'set' : 'unset'
+            });
             return;
         }
 
         const mailOptions = {
-            to: user.email, // Send to user's email
+            to: user.email,
             subject: `Transaction ${transaction.type === 'credit' ? 'Received' : 'Sent'} - NEG AI Banking Platform`,
             text: `
-        Dear ${user.email},
+        Dear ${user.firstName} ${user.lastName},
         
-        A ${transaction.type} transaction has been processed in your wallet:
+        A ${transaction.type} transaction has been processed in your wallet (Account Number: ${user.accountNumber}):
         - Amount: NGN ${transaction.amount.toFixed(2)}
         - Reference: ${transaction.reference}
         - Status: ${transaction.status}
         - Description: ${transaction.description || 'No description'}
+        - Target Account: ${transaction.target || 'N/A'}
         - Timestamp: ${new Date().toISOString()}
         
         For support, contact support@negaibanking.com.
@@ -55,6 +59,7 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
         logger.debug('Preparing to send transaction email', {
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             transactionId: transaction._id,
             requestId,
             recipient: mailOptions.to
@@ -64,6 +69,7 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
         logger.info('Transaction email sent', {
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             transactionId: transaction._id,
             requestId
         });
@@ -71,6 +77,7 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
         logger.error('Failed to send transaction email', {
             userId: user?._id || 'unknown',
             email: user?.email || 'unknown',
+            accountNumber: user?.accountNumber || 'unknown',
             transactionId: transaction._id,
             requestId,
             error: error.message,
@@ -85,34 +92,46 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
  * @param {number} amount - Amount to fund
  * @param {string} reference - Unique transaction reference
  * @param {string} requestId - Request ID
+ * @param {string} accountNumber - User's account number
  * @returns {Object} Payment initiation response
  */
-const initiateFlutterwavePayment = async (user, amount, reference, requestId) => {
+const initiateFlutterwavePayment = async (user, amount, reference, requestId, accountNumber) => {
     try {
         if (!env.FLUTTERWAVE_SECRET_KEY) {
             throw new Error('Flutterwave secret key is not defined');
         }
 
-        // Log raw amount and its type for debugging
+        // Verify accountNumber matches user's accountNumber
+        if (accountNumber !== user.accountNumber) {
+            logger.warn('Account number mismatch for funding', {
+                userId: user._id,
+                email: user.email,
+                providedAccountNumber: accountNumber,
+                userAccountNumber: user.accountNumber,
+                requestId
+            });
+            throw new Error('Invalid account number');
+        }
+
         logger.debug('Raw amount received in initiateFlutterwavePayment', {
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             amount,
             amountType: typeof amount,
             reference,
             requestId
         });
 
-        // Ensure amount is a valid number
         const validatedAmount = Number(amount);
         if (isNaN(validatedAmount) || validatedAmount <= 0) {
             logger.warn('Invalid amount for Flutterwave payment', {
                 userId: user._id,
                 email: user.email,
+                accountNumber: user.accountNumber,
                 amount,
                 amountType: typeof amount,
                 validatedAmount,
-                reference,
                 requestId
             });
             throw new Error('Amount must be a positive number');
@@ -127,11 +146,11 @@ const initiateFlutterwavePayment = async (user, amount, reference, requestId) =>
                 redirect_url: 'https://068d-197-210-29-66.ngrok-free.app/api/wallet/callback',
                 customer: {
                     email: user.email,
-                    name: user.email
+                    name: `${user.firstName} ${user.lastName}`
                 },
                 customizations: {
                     title: 'NEG AI Banking Wallet Funding',
-                    description: `Fund wallet with NGN ${validatedAmount.toFixed(2)}`
+                    description: `Fund wallet with NGN ${validatedAmount.toFixed(2)} for account ${user.accountNumber}`
                 }
             },
             {
@@ -145,6 +164,7 @@ const initiateFlutterwavePayment = async (user, amount, reference, requestId) =>
         logger.info('Flutterwave payment initiated', {
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             reference,
             requestId,
             amount: validatedAmount,
@@ -163,20 +183,27 @@ const initiateFlutterwavePayment = async (user, amount, reference, requestId) =>
         logger.error('Failed to initiate Flutterwave payment', {
             userId: user._id,
             email: user.email,
+            accountNumber: user.accountNumber,
             reference,
             requestId,
             amount,
             error: error.response?.data || error.message,
             stack: error.stack
         });
-        // Send error email to EMAIL_USER
         if (env.EMAIL_USER) {
+            logger.debug('Preparing to send error email for payment initiation failure', {
+                userId: user._id,
+                email: user.email,
+                accountNumber: user.accountNumber,
+                requestId,
+                recipient: env.EMAIL_USER
+            });
             await sendErrorAlert(
                 { message: 'Failed to initiate Flutterwave payment', type: 'error' },
                 {
-                    to: env.EMAIL_USER, // Send to admin email
+                    to: env.EMAIL_USER,
                     subject: 'Payment Initiation Failed - NEG AI Banking Platform',
-                    text: `Failed to initiate payment for user ${user.email}. Error: ${error.message}. Request ID: ${requestId}`,
+                    text: `Failed to initiate payment for user ${user.email} (Account: ${user.accountNumber}). Error: ${error.message}. Request ID: ${requestId}`,
                     requestId
                 }
             );
@@ -222,12 +249,16 @@ const verifyFlutterwavePayment = async (transactionId, requestId) => {
             error: error.response?.data || error.message,
             stack: error.stack
         });
-        // Send error email to EMAIL_USER
         if (env.EMAIL_USER) {
+            logger.debug('Preparing to send error email for payment verification failure', {
+                transactionId,
+                requestId,
+                recipient: env.EMAIL_USER
+            });
             await sendErrorAlert(
                 { message: 'Failed to verify Flutterwave payment', type: 'error' },
                 {
-                    to: env.EMAIL_USER, // Send to admin email
+                    to: env.EMAIL_USER,
                     subject: 'Payment Verification Failed - NEG AI Banking Platform',
                     text: `Failed to verify payment for transaction ${transactionId}. Error: ${error.message}. Request ID: ${requestId}`,
                     requestId
@@ -263,7 +294,15 @@ const creditWallet = async ({
             throw new Error('Wallet not found');
         }
 
-        // Check for duplicate transaction
+        logger.debug('Fetched wallet for credit', {
+            userId,
+            walletId: wallet._id,
+            accountNumber: wallet.accountNumber,
+            rawBalance: wallet.balance,
+            balanceType: typeof wallet.balance,
+            requestId
+        });
+
         const existingTransaction = wallet.ledger.find(
             (tx) => tx.reference === reference
         );
@@ -276,7 +315,6 @@ const creditWallet = async ({
             throw new Error('Transaction already processed');
         }
 
-        // Update balance and add transaction
         wallet.balance += amount;
         const transaction = {
             type: 'credit',
@@ -307,6 +345,7 @@ const creditWallet = async ({
 
         logger.info('Wallet credited successfully', {
             userId,
+            accountNumber: wallet.accountNumber,
             amount,
             reference,
             requestId
@@ -322,12 +361,17 @@ const creditWallet = async ({
             error: error.message,
             stack: error.stack
         });
-        // Send error email to EMAIL_USER
         if (env.EMAIL_USER) {
+            logger.debug('Preparing to send error email for wallet credit failure', {
+                userId,
+                reference,
+                requestId,
+                recipient: env.EMAIL_USER
+            });
             await sendErrorAlert(
                 { message: 'Error crediting wallet', type: 'error' },
                 {
-                    to: env.EMAIL_USER, // Send to admin email
+                    to: env.EMAIL_USER,
                     subject: 'Wallet Credit Failed - NEG AI Banking Platform',
                     text: `Failed to credit wallet for user ${userId}. Error: ${error.message}. Request ID: ${requestId}`,
                     requestId
@@ -364,7 +408,15 @@ const debitWallet = async ({
             throw new Error('Wallet not found');
         }
 
-        // Check for duplicate transaction
+        logger.debug('Fetched wallet for debit', {
+            userId,
+            walletId: wallet._id,
+            accountNumber: wallet.accountNumber,
+            rawBalance: wallet.balance,
+            balanceType: typeof wallet.balance,
+            requestId
+        });
+
         const existingTransaction = wallet.ledger.find(
             (tx) => tx.reference === reference
         );
@@ -377,10 +429,8 @@ const debitWallet = async ({
             throw new Error('Transaction already processed');
         }
 
-        // Validate balance
         await wallet.hasSufficientBalance(amount);
 
-        // Update balance and add transaction
         wallet.balance -= amount;
         const transaction = {
             type: 'debit',
@@ -411,8 +461,8 @@ const debitWallet = async ({
 
         logger.info('Wallet debited successfully', {
             userId,
+            accountNumber: wallet.accountNumber,
             amount,
-            reference,
             target,
             requestId
         });
@@ -427,12 +477,17 @@ const debitWallet = async ({
             error: error.message,
             stack: error.stack
         });
-        // Send error email to EMAIL_USER
         if (env.EMAIL_USER) {
+            logger.debug('Preparing to send error email for wallet debit failure', {
+                userId,
+                reference,
+                requestId,
+                recipient: env.EMAIL_USER
+            });
             await sendErrorAlert(
                 { message: 'Error debiting wallet', type: 'error' },
                 {
-                    to: env.EMAIL_USER, // Send to admin email
+                    to: env.EMAIL_USER,
                     subject: 'Wallet Debit Failed - NEG AI Banking Platform',
                     text: `Failed to debit wallet for user ${userId}. Error: ${error.message}. Request ID: ${requestId}`,
                     requestId
@@ -452,9 +507,8 @@ const debitWallet = async ({
  */
 const transferFunds = async ({
     senderId,
-    recipientEmail,
+    recipientAccountNumber,
     amount,
-    reference,
     description,
     requestId
 }) => {
@@ -469,58 +523,83 @@ const transferFunds = async ({
             throw new Error('Sender wallet not found');
         }
 
-        const recipient = await User.findOne({ email: recipientEmail });
+        logger.debug('Fetched sender wallet for transfer', {
+            senderId,
+            walletId: senderWallet._id,
+            accountNumber: senderWallet.accountNumber,
+            rawBalance: senderWallet.balance,
+            balanceType: typeof senderWallet.balance,
+            amount,
+            requestId
+        });
+
+        const recipient = await User.findOne({ accountNumber: recipientAccountNumber });
         if (!recipient) {
             throw new Error('Recipient not found');
         }
 
-        const recipientWallet = await Wallet.findOne({ userId: recipient.id })
+        const recipientWallet = await Wallet.findOne({ userId: recipient._id })
             .session(session)
             .select('+balance');
         if (!recipientWallet) {
             throw new Error('Recipient wallet not found');
         }
 
-        // Check for duplicate transaction
-        const existingTransaction = senderWallet.ledger.find(
-            (tx) => tx.reference === reference
+        logger.debug('Fetched recipient wallet for transfer', {
+            recipientId: recipient._id,
+            walletId: recipientWallet._id,
+            accountNumber: recipientWallet.accountNumber,
+            rawBalance: recipientWallet.balance,
+            balanceType: typeof recipientWallet.balance,
+            amount,
+            requestId
+        });
+
+        // Generate unique references for sender and recipient transactions
+        const senderReference = `TRANSFER-SENDER-${uuidv4()}`;
+        const recipientReference = `TRANSFER-RECIPIENT-${uuidv4()}`;
+
+        const senderExistingTransaction = senderWallet.ledger.find(
+            (tx) => tx.reference === senderReference
         );
-        if (existingTransaction) {
+        const recipientExistingTransaction = recipientWallet.ledger.find(
+            (tx) => tx.reference === recipientReference
+        );
+        if (senderExistingTransaction || recipientExistingTransaction) {
             logger.warn('Duplicate transfer detected', {
                 senderId,
-                reference,
+                recipientAccountNumber,
+                senderReference,
+                recipientReference,
                 requestId
             });
             throw new Error('Transaction already processed');
         }
 
-        // Validate sender balance
         await senderWallet.hasSufficientBalance(amount);
 
-        // Debit sender
         senderWallet.balance -= amount;
         const senderTransaction = {
             type: 'debit',
             amount,
-            reference,
+            reference: senderReference,
             status: 'completed',
             source: 'transfer',
-            target: recipient.email,
+            target: recipient.accountNumber,
             description,
             createdBy: senderId
         };
         senderWallet.ledger.push(senderTransaction);
 
-        // Credit recipient
         recipientWallet.balance += amount;
         const recipientTransaction = {
             type: 'credit',
             amount,
-            reference,
+            reference: recipientReference,
             status: 'completed',
             source: 'transfer',
             target: null,
-            description: `Received from ${senderId}`,
+            description: `Received from ${senderWallet.accountNumber}`,
             createdBy: senderId
         };
         recipientWallet.ledger.push(recipientTransaction);
@@ -530,7 +609,6 @@ const transferFunds = async ({
 
         await session.commitTransaction();
 
-        // Send emails asynchronously
         const sender = await User.findById(senderId);
         if (sender) {
             sendTransactionEmail(sender, senderTransaction, requestId).catch(() => {
@@ -546,8 +624,11 @@ const transferFunds = async ({
         logger.info('Transfer completed successfully', {
             senderId,
             recipientId: recipient._id,
+            senderAccountNumber: senderWallet.accountNumber,
+            recipientAccountNumber,
             amount,
-            reference,
+            senderReference,
+            recipientReference,
             requestId
         });
 
@@ -556,20 +637,24 @@ const transferFunds = async ({
         await session.abortTransaction();
         logger.error('Error transferring funds', {
             senderId,
-            recipientEmail,
-            reference,
+            recipientAccountNumber,
             requestId,
             error: error.message,
             stack: error.stack
         });
-        // Send error email to EMAIL_USER
         if (env.EMAIL_USER) {
+            logger.debug('Preparing to send error email for transfer failure', {
+                senderId,
+                recipientAccountNumber,
+                requestId,
+                recipient: env.EMAIL_USER
+            });
             await sendErrorAlert(
                 { message: 'Error transferring funds', type: 'error' },
                 {
-                    to: env.EMAIL_USER, // Send to admin email
+                    to: env.EMAIL_USER,
                     subject: 'Transfer Failed - NEG AI Banking Platform',
-                    text: `Failed to transfer funds from ${senderId} to ${recipientEmail}. Error: ${error.message}. Request ID: ${requestId}`,
+                    text: `Failed to transfer funds from ${senderId} to account ${recipientAccountNumber}. Error: ${error.message}. Request ID: ${requestId}`,
                     requestId
                 }
             );

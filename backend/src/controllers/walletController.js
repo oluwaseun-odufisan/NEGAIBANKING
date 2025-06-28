@@ -17,44 +17,38 @@ import { successResponse, errorResponse } from '../utils/response.js';
 const fundWallet = async (req, res) => {
     const requestId = req.requestId;
     try {
-        // Log raw request body for debugging
         logger.debug('Raw request body for fundWallet', {
             userId: req.user.id,
             requestId,
             body: req.body
         });
 
-        // Fallback to req.body if validatedBody is undefined
         const input = req.validatedBody || req.body || {};
-        const amountSchema = z.number().positive('Amount must be positive').max(1000000, 'Amount cannot exceed NGN 1,000,000');
-        const parsedAmount = Number(input.amount);
-        const result = amountSchema.safeParse(parsedAmount);
+        const fundSchema = z.object({
+            amount: z.number().positive('Amount must be positive').max(1000000, 'Amount cannot exceed NGN 1,000,000'),
+            accountNumber: z.string().regex(/^\d{10}$/, 'Account number must be 10 digits')
+        });
+        const result = fundSchema.safeParse(input);
 
         if (!result.success) {
-            logger.warn('Invalid or missing amount for funding', {
+            logger.warn('Invalid or missing validated body for funding', {
                 userId: req.user.id,
                 requestId,
                 body: req.body,
-                parsedAmount,
                 validationErrors: result.error.issues
             });
             return res.status(400).json(
-                errorResponse('Invalid or missing amount in request body', 400, result.error.issues, requestId)
+                errorResponse('Invalid or missing amount or account number', 400, result.error.issues, requestId)
             );
         }
 
-        const amount = result.data; // Use validated amount directly
-        logger.debug('Validated amount for fundWallet', {
-            userId: req.user.id,
-            requestId,
-            amount
-        });
+        const { amount, accountNumber } = result.data;
 
-        // Fraud detection: Limit to 1M NGN
         if (amount > 1000000) {
             logger.warn('Funding amount exceeds limit', {
                 userId: req.user.id,
                 amount,
+                accountNumber,
                 requestId
             });
             return res.status(400).json(
@@ -70,10 +64,22 @@ const fundWallet = async (req, res) => {
             );
         }
 
+        if (user.accountNumber !== accountNumber) {
+            logger.warn('Account number mismatch for funding', {
+                userId: user._id,
+                providedAccountNumber: accountNumber,
+                userAccountNumber: user.accountNumber,
+                requestId
+            });
+            return res.status(400).json(
+                errorResponse('Invalid account number', 400, null, requestId)
+            );
+        }
+
         const wallet = await Wallet.findOne({ userId: req.user.id });
         if (!wallet) {
             logger.warn('Wallet not found for funding, creating new wallet', { userId: req.user.id, requestId });
-            const newWallet = new Wallet({ userId: req.user.id, balance: 0 });
+            const newWallet = new Wallet({ userId: req.user.id, balance: 0, accountNumber: user.accountNumber });
             await newWallet.save();
         }
 
@@ -82,11 +88,13 @@ const fundWallet = async (req, res) => {
             user,
             amount,
             reference,
-            requestId
+            requestId,
+            accountNumber
         );
 
         logger.info('Wallet funding initiated', {
             userId: req.user.id,
+            accountNumber: user.accountNumber,
             amount,
             reference,
             requestId
@@ -118,7 +126,6 @@ const fundWallet = async (req, res) => {
 const verifyPayment = async (req, res) => {
     const requestId = req.requestId;
     try {
-        // Fallback to req.body if validatedBody is undefined
         const input = req.validatedBody || req.body || {};
         const verifySchema = z.object({
             transactionId: z.string().min(1, 'Transaction ID is required'),
@@ -131,8 +138,6 @@ const verifyPayment = async (req, res) => {
                 userId: req.user.id,
                 requestId,
                 body: req.body,
-                sanitizedBody: req.sanitizedBody,
-                validatedBody: req.validatedBody,
                 validationErrors: result.error.issues
             });
             return res.status(400).json(
@@ -151,7 +156,6 @@ const verifyPayment = async (req, res) => {
             );
         }
 
-        // Check if transaction already processed
         const existingTransaction = wallet.ledger.find(
             (tx) => tx.reference === reference
         );
@@ -209,6 +213,7 @@ const verifyPayment = async (req, res) => {
 
         logger.info('Payment verified and wallet credited', {
             userId,
+            accountNumber: wallet.accountNumber,
             amount,
             reference,
             requestId
@@ -230,6 +235,121 @@ const verifyPayment = async (req, res) => {
         });
         res.status(500).json(
             errorResponse('Internal server error during payment verification', 500, null, requestId)
+        );
+    }
+};
+
+/**
+ * Transfers funds to another user's wallet.
+ */
+const transferFunds = async (req, res) => {
+    const requestId = req.requestId;
+    try {
+        logger.debug('Raw request body for transferFunds', {
+            userId: req.user.id,
+            requestId,
+            body: req.body
+        });
+
+        const input = req.validatedBody || req.body || {};
+        const transferSchema = z.object({
+            recipientAccountNumber: z.string().regex(/^\d{10}$/, 'Recipient account number must be 10 digits'),
+            amount: z.number().positive('Amount must be positive').max(500000, 'Amount cannot exceed NGN 500,000'),
+            description: z.string().max(200, 'Description cannot exceed 200 characters').optional()
+        });
+        const result = transferSchema.safeParse(input);
+
+        if (!result.success) {
+            logger.warn('Invalid or missing validated body for transfer', {
+                userId: req.user.id,
+                requestId,
+                body: req.body,
+                validationErrors: result.error.issues
+            });
+            return res.status(400).json(
+                errorResponse('Invalid or missing transfer details', 400, result.error.issues, requestId)
+            );
+        }
+
+        const { recipientAccountNumber, amount, description } = result.data;
+        const senderId = req.user.id;
+
+        const sender = await User.findById(senderId);
+        if (!sender) {
+            logger.warn('Sender not found for transfer', { userId: senderId, requestId });
+            return res.status(404).json(
+                errorResponse('Sender not found', 404, null, requestId)
+            );
+        }
+
+        if (recipientAccountNumber === sender.accountNumber) {
+            logger.warn('Attempt to transfer to self', {
+                userId: senderId,
+                accountNumber: sender.accountNumber,
+                recipientAccountNumber,
+                requestId
+            });
+            return res.status(400).json(
+                errorResponse('Cannot transfer to your own account', 400, null, requestId)
+            );
+        }
+
+        const recipient = await User.findOne({ accountNumber: recipientAccountNumber });
+        if (!recipient) {
+            logger.warn('Recipient not found for transfer', {
+                userId: senderId,
+                recipientAccountNumber,
+                requestId
+            });
+            return res.status(404).json(
+                errorResponse('Recipient not found', 404, null, requestId)
+            );
+        }
+
+        const reference = `TRANSFER-${uuidv4()}`;
+        const { senderTransaction, recipientTransaction } = await walletService.transferFunds({
+            senderId,
+            recipientAccountNumber,
+            amount,
+            reference,
+            description,
+            requestId
+        });
+
+        logger.info('Transfer completed successfully', {
+            senderId,
+            senderAccountNumber: sender.accountNumber,
+            recipientId: recipient._id,
+            recipientAccountNumber,
+            amount,
+            reference,
+            requestId
+        });
+
+        res.status(200).json(
+            successResponse('Transfer successful', 200, {
+                senderTransaction: {
+                    amount: senderTransaction.amount,
+                    reference: senderTransaction.reference,
+                    status: senderTransaction.status,
+                    target: senderTransaction.target
+                },
+                recipientTransaction: {
+                    amount: recipientTransaction.amount,
+                    reference: recipientTransaction.reference,
+                    status: recipientTransaction.status
+                }
+            }, requestId)
+        );
+    } catch (error) {
+        logger.error('Error transferring funds', {
+            userId: req.user?.id,
+            requestId,
+            error: error.message,
+            stack: error.stack
+        });
+        res.status(500).json(
+            errorResponse('Internal server error during transfer', 500, null, requestId)
         );
     }
 };
@@ -275,18 +395,18 @@ const handleFlutterwaveCallback = async (req, res) => {
                 reference: tx_ref,
                 status
             });
-            return res.status(400).json(
+            res.status(400).json(
                 errorResponse(`Payment ${status}`, 400, null, requestId)
             );
         } else {
-            logger.warn('Unknown payment status in callback', {
+            logger.warn('Unknown callback status', {
                 requestId,
                 transactionId: transaction_id,
                 reference: tx_ref,
                 status
             });
-            return res.status(400).json(
-                errorResponse('Unknown payment status', 400, null, requestId)
+            res.status(400).json(
+                errorResponse('Unknown callback status', 400, null, requestId)
             );
         }
     } catch (error) {
@@ -296,7 +416,7 @@ const handleFlutterwaveCallback = async (req, res) => {
             stack: error.stack
         });
         res.status(500).json(
-            errorResponse('Internal server error during callback', 500, null, requestId)
+            errorResponse('Internal server error during callback handling', 500, null, requestId)
         );
     }
 };
@@ -315,7 +435,9 @@ const handleFlutterwaveWebhook = async (req, res) => {
                 body: req.body,
                 validatedBody: req.validatedBody
             });
-            return res.status(200).json({ status: 'received', message: 'Invalid or missing webhook parameters' });
+            return res.status(400).json(
+                errorResponse('Invalid or missing webhook parameters', 400, null, requestId)
+            );
         }
 
         logger.info('Flutterwave webhook received', {
@@ -325,242 +447,140 @@ const handleFlutterwaveWebhook = async (req, res) => {
             status
         });
 
-        if (status !== 'successful') {
+        if (status === 'successful') {
+            const verificationData = await walletService.verifyFlutterwavePayment(
+                transactionId,
+                requestId
+            );
+
+            if (verificationData.status !== 'success') {
+                logger.warn('Webhook verification failed', {
+                    requestId,
+                    transactionId,
+                    reference,
+                    verificationStatus: verificationData.status
+                });
+                return res.status(400).json(
+                    errorResponse('Webhook verification failed', 400, null, requestId)
+                );
+            }
+
+            const amount = verificationData.data.amount;
+            const userEmail = verificationData.data.customer.email;
+            const user = await User.findOne({ email: userEmail });
+            if (!user) {
+                logger.warn('User not found for webhook', {
+                    requestId,
+                    email: userEmail,
+                    transactionId,
+                    reference
+                });
+                return res.status(404).json(
+                    errorResponse('User not found', 404, null, requestId)
+                );
+            }
+
+            const wallet = await Wallet.findOne({ userId: user._id }).select('+balance');
+            if (!wallet) {
+                logger.warn('Wallet not found for webhook, creating new wallet', {
+                    userId: user._id,
+                    requestId
+                });
+                const newWallet = new Wallet({ userId: user._id, balance: 0, accountNumber: user.accountNumber });
+                await newWallet.save();
+            }
+
+            const existingTransaction = wallet.ledger.find(
+                (tx) => tx.reference === reference
+            );
+            if (existingTransaction) {
+                logger.warn('Duplicate webhook transaction detected', {
+                    userId: user._id,
+                    reference,
+                    requestId
+                });
+                return res.status(409).json(
+                    errorResponse('Transaction already processed', 409, null, requestId)
+                );
+            }
+
+            const { wallet: updatedWallet } = await walletService.creditWallet({
+                userId: user._id,
+                amount,
+                reference,
+                source: 'flutterwave',
+                description: 'Wallet funding via Flutterwave webhook',
+                requestId,
+                flutterwaveTxId: transactionId
+            });
+
+            logger.info('Webhook processed and wallet credited', {
+                userId: user._id,
+                accountNumber: user.accountNumber,
+                amount,
+                reference,
+                requestId
+            });
+
+            res.status(200).json(
+                successResponse('Webhook processed successfully', 200, {
+                    balance: updatedWallet.balance,
+                    transactionId,
+                    reference
+                }, requestId)
+            );
+        } else {
             logger.warn('Webhook indicates non-successful payment', {
                 requestId,
                 transactionId,
                 reference,
                 status
             });
-            return res.status(200).json({ status: 'received', message: `Payment ${status}` });
+            res.status(200).json(
+                successResponse(`Webhook received for ${status} payment`, 200, null, requestId)
+            );
         }
-
-        const verificationData = await walletService.verifyFlutterwavePayment(
-            transactionId,
-            requestId
-        );
-
-        if (verificationData.status !== 'success') {
-            logger.warn('Webhook payment verification failed', {
-                requestId,
-                transactionId,
-                reference,
-                verificationStatus: verificationData.status
-            });
-            return res.status(200).json({ status: 'received', message: 'Payment verification failed' });
-        }
-
-        const user = await User.findOne({ email: verificationData.data.customer?.email });
-        if (!user) {
-            logger.warn('User not found for webhook payment', {
-                requestId,
-                transactionId,
-                reference,
-                email: verificationData.data.customer?.email
-            });
-            return res.status(200).json({ status: 'received', message: 'User not found' });
-        }
-
-        const wallet = await Wallet.findOne({ userId: user._id }).select('+balance');
-        if (!wallet) {
-            logger.warn('Wallet not found for webhook verification', {
-                userId: user._id,
-                requestId
-            });
-            return res.status(200).json({ status: 'received', message: 'Wallet not found' });
-        }
-
-        const existingTransaction = wallet.ledger.find((tx) => tx.reference === reference);
-        if (existingTransaction) {
-            logger.warn('Duplicate webhook transaction', {
-                userId: user._id,
-                reference,
-                requestId
-            });
-            return res.status(200).json({ status: 'received', message: 'Transaction already processed' });
-        }
-
-        const amount = verificationData.data.amount;
-        if (amount > 1000000) {
-            logger.warn('Webhook verified amount exceeds limit', {
-                userId: user._id,
-                amount,
-                reference,
-                requestId
-            });
-            return res.status(200).json({ status: 'received', message: 'Verified amount exceeds NGN 1,000,000' });
-        }
-
-        const { wallet: updatedWallet } = await walletService.creditWallet({
-            userId: user._id,
-            amount,
-            reference,
-            source: 'flutterwave',
-            description: 'Wallet funding via Flutterwave webhook',
-            requestId,
-            flutterwaveTxId: transactionId
-        });
-
-        logger.info('Webhook payment verified and wallet credited', {
-            userId: user._id,
-            amount,
-            reference,
-            requestId
-        });
-
-        return res.status(200).json({ status: 'received', message: 'Payment verified and wallet credited' });
     } catch (error) {
         logger.error('Error handling Flutterwave webhook', {
             requestId,
             error: error.message,
             stack: error.stack
         });
-        return res.status(200).json({ status: 'received', message: 'Error processing webhook' });
-    }
-};
-
-/**
- * Transfers funds to another user.
- */
-const transferFunds = async (req, res) => {
-    const requestId = req.requestId;
-    try {
-        // Fallback to req.body if validatedBody is undefined
-        const input = req.validatedBody || req.body || {};
-        const transferSchema = z.object({
-            recipientEmail: z.string().email('Invalid email format'),
-            amount: z.number().positive('Amount must be positive').max(500000, 'Amount cannot exceed NGN 500,000'),
-            description: z.string().max(200, 'Description cannot exceed 200 characters').optional()
-        });
-        const result = transferSchema.safeParse(input);
-
-        if (!result.success) {
-            logger.warn('Invalid or missing validated body for transfer', {
-                userId: req.user.id,
-                requestId,
-                body: req.body,
-                sanitizedBody: req.sanitizedBody,
-                validatedBody: req.validatedBody,
-                validationErrors: result.error.issues
-            });
-            return res.status(400).json(
-                errorResponse('Invalid or missing recipientEmail or amount', 400, result.error.issues, requestId)
-            );
-        }
-
-        const { recipientEmail, amount, description } = result.data;
-        const senderId = req.user.id;
-
-        // Fraud detection: Limit to 500K NGN
-        if (amount > 500000) {
-            logger.warn('Transfer amount exceeds limit', {
-                userId: senderId,
-                amount,
-                requestId
-            });
-            return res.status(400).json(
-                errorResponse('Transfer amount cannot exceed NGN 500,000', 400, null, requestId)
-            );
-        }
-
-        // Prevent self-transfer
-        if (recipientEmail === req.user.email) {
-            logger.warn('Self-transfer attempted', {
-                userId: senderId,
-                recipientEmail,
-                requestId
-            });
-            return res.status(400).json(
-                errorResponse('Cannot transfer to self', 400, null, requestId)
-            );
-        }
-
-        const reference = `TRANSFER-${uuidv4()}`;
-        const { senderTransaction, recipientTransaction } = await walletService.transferFunds({
-            senderId,
-            recipientEmail,
-            amount,
-            reference,
-            description,
-            requestId
-        });
-
-        logger.info('Transfer completed', {
-            senderId,
-            recipientEmail,
-            amount,
-            reference,
-            requestId
-        });
-
-        res.status(200).json(
-            successResponse('Transfer completed successfully', 200, {
-                transaction: {
-                    reference,
-                    amount,
-                    status: senderTransaction.status,
-                    createdAt: senderTransaction.createdAt
-                }
-            }, requestId)
-        );
-    } catch (error) {
-        logger.error('Error transferring funds', {
-            userId: req.user?.id,
-            requestId,
-            error: error.message,
-            stack: error.stack
-        });
-        res.status(400).json(
-            errorResponse(error.message || 'Internal server error during transfer', 400, null, requestId)
+        res.status(500).json(
+            errorResponse('Internal server error during webhook handling', 500, null, requestId)
         );
     }
 };
 
 /**
- * Gets wallet balance and recent transactions.
+ * Gets wallet balance.
  */
 const getBalance = async (req, res) => {
     const requestId = req.requestId;
     try {
-        const userId = req.user.id;
-        const wallet = await Wallet.findOne({ userId }).select('+balance');
+        const wallet = await Wallet.findOne({ userId: req.user.id }).select('+balance');
         if (!wallet) {
-            logger.warn('Wallet not found for balance check, creating new wallet', { userId, requestId });
-            const newWallet = new Wallet({ userId, balance: 0 });
-            await newWallet.save();
-            return res.status(200).json(
-                successResponse('Wallet balance retrieved successfully', 200, {
-                    balance: 0,
-                    transactions: []
-                }, requestId)
+            logger.warn('Wallet not found for balance check', { userId: req.user.id, requestId });
+            return res.status(404).json(
+                errorResponse('Wallet not found', 404, null, requestId)
             );
         }
 
-        // Get last 10 transactions
-        const recentTransactions = wallet.ledger
-            .slice(-10)
-            .map((tx) => ({
-                type: tx.type,
-                amount: tx.amount,
-                reference: tx.reference,
-                status: tx.status,
-                source: tx.source,
-                target: tx.target,
-                description: tx.description,
-                createdAt: tx.createdAt
-            }));
-
-        logger.info('Wallet balance retrieved', { userId, requestId });
+        logger.info('Balance retrieved successfully', {
+            userId: req.user.id,
+            accountNumber: wallet.accountNumber,
+            requestId
+        });
 
         res.status(200).json(
-            successResponse('Wallet balance retrieved successfully', 200, {
+            successResponse('Balance retrieved successfully', 200, {
                 balance: wallet.balance,
-                transactions: recentTransactions
+                accountNumber: wallet.accountNumber
             }, requestId)
         );
     } catch (error) {
-        logger.error('Error retrieving wallet balance', {
-            userId: req.user?.id,
+        logger.error('Error retrieving balance', {
+            userId: req.user.id,
             requestId,
             error: error.message,
             stack: error.stack
@@ -574,8 +594,8 @@ const getBalance = async (req, res) => {
 export default {
     fundWallet,
     verifyPayment,
+    transferFunds,
     handleFlutterwaveCallback,
     handleFlutterwaveWebhook,
-    transferFunds,
     getBalance
 };

@@ -1,102 +1,22 @@
-curl -X POST -H "Content-Type: application/json" -d '{"email":"avalawson452@gmail.com","password":"SecurePass1234!"}' http://localhost:3000/api/auth/register
+curl -X POST -H "Content-Type: application/json" -d '{"firstName":"Ava","lastName":"Lawson","email":"avalawson452@gmail.com","password":"SecurePass1234!","phoneNumber":"+2347042449380"}' http://localhost:3000/api/auth/register
 
 
-curl -X POST -H "Content-Type: application/json" -d '{"email":"avalawson452@gmail.com","password":"SecurePass1234!"}' http://localhost:3000/api/auth/login
+curl -X POST -H "Content-Type: application/json" -d '{"firstName":"Karl","lastName":"Earnder","email":"karlearnder@gmail.com","password":"SecurePass12345!","phoneNumber":"+2347042449381"}' http://localhost:3000/api/auth/register
 
 
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5ODQ2OSwiZXhwIjoxNzUxMDAyMDY5fQ.-5a-8RfvkNdPwvUE_xUnLOYFTCBzDNAhkiSG2_3rFNw
+curl -X POST -H "Content-Type: application/json" -d '{"email":"karlearnder@gmail.com","password":"SecurePass12345!"}' http://localhost:3000/api/auth/login
 
 
-
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5ODQ2OSwiZXhwIjoxNzUxMDAyMDY5fQ.-5a-8RfvkNdPwvUE_xUnLOYFTCBzDNAhkiSG2_3rFNw" -d '{"amount":64000}' http://localhost:3000/api/wallet/fund
-
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" -d '{"amount":30000,"accountNumber":"7042449381"}' http://localhost:3000/api/wallet/fund
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5NDYwNSwiZXhwIjoxNzUwOTk4MjA1fQ.XPg5z3suCHYi8O5U6FQa1il3bScIHD85coY8kQYEbM8" -d '{"amount":48000}' http://localhost:3000/api/wallet/fund
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" -d '{"transactionId":"9455382","reference":"FUND-c9897067-f309-471a-911e-17b4e5fe694d"}' http://localhost:3000/api/wallet/verify-payment
 
 
-
-{"status":"success","message":"Payment initiated successfully","data":{"paymentUrl":"https://checkout-v2.dev-flutterwave.com/v3/hosted/pay/da04bba1e821e2c03b7d","reference":"FUND-6d1603c0-81d1-4280-830d-a85f26570ea3","walletId":"685da83cc5ec2765ddf313e1"},"requestId":"13fcd006-e84c-45a4-9f81-51d2b11bc196","timestamp":"2025-06-27T04:47:55.866Z"}%      
-
-
-https://068d-197-210-29-66.ngrok-fre
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" -d '{"recipientAccountNumber":"7042449380","amount":5000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5MzYyNiwiZXhwIjoxNzUwOTk3MjI2fQ.vGS2Dm4v60oJFtvBsRJoLpbp5Z286u7KmDIWyyqG0CI" -d '{"reference":"FUND-61fac7a8-b150-4a4f-9278-46ed8538208c"}' http://localhost:3000/api/wallet/verify-by-reference
+curl -X GET -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" http://localhost:3000/api/wallet/balance
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkYTgzYmM1ZWMyNzY1ZGRmMzEzZGUiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MDk5ODQ2OSwiZXhwIjoxNzUxMDAyMDY5fQ.-5a-8RfvkNdPwvUE_xUnLOYFTCBzDNAhkiSG2_3rFNw" -d '{"transactionId":"9451993","reference":"FUND-6d1603c0-81d1-4280-830d-a85f26570ea3"}' http://localhost:3000/api/wallet/verify-payment
-
-
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer <accessToken>" -d '{"recipientEmail":"user2@example.com","amount":5000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer
-
-
-curl -H "Authorization: Bearer <accessToken>" http://localhost:3000/api/wallet/balance
-
-
-
-
-
-
-// src/controllers/authController.js
-// ... (other imports and functions remain unchanged)
-
-/**
- * Logout from current session.
- */
-export const logout = async (req, res) => {
-    const requestId = req.requestId;
-    try {
-        const user = await User.findById(req.user.id).select('+sessions');
-        if (!user) {
-            logger.warn('User not found for logout', { requestId, userId: req.user.id });
-            return res.status(404).json(
-                errorResponse('User not found', 404, null, req.requestId)
-            );
-        }
-
-        const { refreshToken } = req.body;
-        if (!refreshToken) {
-            logger.warn('No refresh token provided for logout', { requestId, userId: req.user.id });
-            return res.status(400).json(
-                errorResponse('No refresh token provided', 400, null, req.requestId)
-            );
-        }
-
-        user.sessions = user.sessions.filter((s) => s.refreshToken !== refreshToken);
-        await user.save();
-
-        logger.info('User logged out successfully', {
-            requestId,
-            userId: user._id,
-            email: user.email
-        });
-
-        res.status(200).json(
-            successResponse('Logged out successfully', 200, null, req.requestId)
-        );
-    } catch (error) {
-        logger.error('Logout error', {
-            requestId,
-            error: error.message,
-            stack: error.stack
-        });
-        res.status(500).json(
-            errorResponse(`Internal server error during logout: ${error.message}`, 500, null, req.requestId)
-        );
-    }
-};
-
-// ... (other functions remain unchanged)
-
-export default {
-    register,
-    login,
-    refreshToken,
-    getProfile,
-    logout,
-    logoutAll,
-    requestPasswordReset,
-    resetPassword,
-    createWalletForUser
-};
+{"status":"success","message":"Login successful","data":{"accessToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ","refreshToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTE3NDU1MTB9.sQu3AwV0h-G3bAUNM22-SZh9wHZYk9Q2K_XMOJdwhWU","user":{"id":"6860493d1bdffaa66dc88ace","email":"karlearnder@gmail.com","role":"user","isVerified":false,"accountNumber":"7042449381"},"walletId":"6860493d1bdffaa66dc88ad1"},"requestId":"16f21162-31f3-4b06-a0a0-7c5155765b1b","timestamp":"2025-06-28T19:58:31.231Z"}%  

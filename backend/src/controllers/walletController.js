@@ -545,9 +545,9 @@ const handleFlutterwaveWebhook = async (req, res) => {
     const requestId = req.requestId;
     try {
         const input = req.validatedBody || req.body || {};
-        const { event, transfer } = input;
+        const { 'event.type': eventType, transfer } = input;
 
-        if (!event || !transfer) {
+        if (!eventType || !transfer) {
             logger.warn('Invalid or missing webhook parameters', {
                 requestId,
                 body: req.body,
@@ -565,10 +565,10 @@ const handleFlutterwaveWebhook = async (req, res) => {
             transactionId,
             reference,
             status,
-            event
+            eventType
         });
 
-        if (status === 'SUCCESSFUL' && event === 'transfer.completed') {
+        if (status === 'SUCCESSFUL' && eventType === 'transfer.completed') {
             const recipient = await User.findOne({ accountNumber: account_number });
             if (!recipient) {
                 logger.warn('Recipient not found for webhook', {
@@ -671,10 +671,10 @@ const handleFlutterwaveWebhook = async (req, res) => {
                 transactionId,
                 reference,
                 status,
-                event
+                eventType
             });
             res.status(200).json(
-                successResponse(`Webhook received for ${status} ${event}`, 200, null, requestId)
+                successResponse(`Webhook received for ${status} ${eventType}`, 200, null, requestId)
             );
         }
     } catch (error) {

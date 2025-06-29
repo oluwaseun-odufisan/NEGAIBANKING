@@ -12,7 +12,7 @@ curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhb
 
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2ODkwNSwiZXhwIjoxNzUxMTcyNTA1fQ.WJyk0zKRkS0EsCmsuoMwYlS8SNtx6fvU37dXtY-i0vk" -d '{"recipientAccountNumber":"7042449381","amount":78000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2ODkwNSwiZXhwIjoxNzUxMTcyNTA1fQ.WJyk0zKRkS0EsCmsuoMwYlS8SNtx6fvU37dXtY-i0vk" -d '{"recipientAccountNumber":"7042449381","amount":11000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer
 
 
 

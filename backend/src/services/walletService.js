@@ -18,7 +18,7 @@ import { sendErrorAlert } from '../utils/email.js';
  * @param {Object} transaction - Transaction details
  * @param {string} requestId - Request ID
  * @param {number} balance - Current wallet balance
- * @param {number} [transferFee] - Transfer fee (for external transfers)
+ * @param {number} [transferFee] - Transfer fee (for external debit transactions only)
  */
 const sendTransactionEmail = async (user, transaction, requestId, balance, transferFee = 0) => {
     try {
@@ -38,22 +38,39 @@ const sendTransactionEmail = async (user, transaction, requestId, balance, trans
             return;
         }
 
+        const isDebit = transaction.type === 'debit';
         const mailOptions = {
             to: user.email,
-            subject: `Transaction ${transaction.type === 'credit' ? 'Received' : 'Sent'} - NEG AI Banking Platform`,
-            text: `
+            subject: `Transaction ${isDebit ? 'Debit' : 'Credit'} Alert - NEG AI Banking Platform`,
+            text: isDebit
+                ? `
         Dear ${user.firstName} ${user.lastName},
 
-        A ${transaction.type} transaction has been processed in your wallet (Account Number: ${user.accountNumber}, Bank: ${user.bankName || 'NEG AI Bank'}):
+        A debit transaction has been processed in your wallet (Account Number: ${user.accountNumber}, Bank: ${user.bankName || 'NEG AI Bank'}):
         - Amount: NGN ${transaction.amount.toFixed(2)}
-        ${transferFee > 0 ? `- Transfer Fee: NGN ${transferFee.toFixed(2)}` : ''}
-        - Total Deducted: NGN ${(transaction.amount + transferFee).toFixed(2)}
+        ${transferFee > 0 ? `- Transfer Fee: NGN ${transferFee.toFixed(2)}\n        - Total Deducted: NGN ${(transaction.amount + transferFee).toFixed(2)}` : ''}
         - Current Balance: NGN ${balance.toFixed(2)}
         - Reference: ${transaction.reference}
         - Status: ${transaction.status}
         - Description: ${transaction.description || 'No description'}
         - Target Account: ${transaction.target || 'N/A'}
         - Target Bank: ${transaction.targetBank || 'N/A'}
+        - Timestamp: ${new Date().toISOString()}
+
+        For support, contact support@negaibanking.com.
+        Request ID: ${requestId}
+      `
+                : `
+        Dear ${user.firstName} ${user.lastName},
+
+        A credit transaction has been processed in your wallet (Account Number: ${user.accountNumber}, Bank: ${user.bankName || 'NEG AI Bank'}):
+        - Amount Credited: NGN ${transaction.amount.toFixed(2)}
+        - Current Balance: NGN ${balance.toFixed(2)}
+        - Reference: ${transaction.reference}
+        - Status: ${transaction.status}
+        - Description: ${transaction.description || 'No description'}
+        - Source Account: ${transaction.target || 'N/A'}
+        - Source Bank: ${transaction.targetBank || 'N/A'}
         - Timestamp: ${new Date().toISOString()}
 
         For support, contact support@negaibanking.com.
@@ -67,6 +84,7 @@ const sendTransactionEmail = async (user, transaction, requestId, balance, trans
             email: user.email,
             accountNumber: user.accountNumber,
             transactionId: transaction._id,
+            transactionType: transaction.type,
             requestId,
             recipient: mailOptions.to
         });
@@ -77,6 +95,7 @@ const sendTransactionEmail = async (user, transaction, requestId, balance, trans
             email: user.email,
             accountNumber: user.accountNumber,
             transactionId: transaction._id,
+            transactionType: transaction.type,
             requestId
         });
     } catch (error) {
@@ -85,6 +104,7 @@ const sendTransactionEmail = async (user, transaction, requestId, balance, trans
             email: user?.email || 'unknown',
             accountNumber: user?.accountNumber || 'unknown',
             transactionId: transaction._id,
+            transactionType: transaction.type,
             requestId,
             error: error.message,
             stack: error.stack
@@ -350,6 +370,54 @@ const verifyFlutterwavePayment = async (transactionId, requestId) => {
 };
 
 /**
+ * Checks Flutterwave account balance (if supported by API).
+ * @param {string} requestId - Request ID
+ * @returns {number} Available balance
+ */
+const checkFlutterwaveBalance = async (requestId) => {
+    try {
+        if (!env.FLUTTERWAVE_SECRET_KEY) {
+            throw new Error('Flutterwave secret key is not defined');
+        }
+
+        // Note: Flutterwave's API may not expose a direct balance endpoint for payout accounts.
+        // This is a placeholder; replace with actual endpoint if available.
+        const response = await axios.get(
+            'https://api.flutterwave.com/v3/balances/NGN',
+            {
+                headers: {
+                    Authorization: `Bearer ${env.FLUTTERWAVE_SECRET_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        if (response.data.status !== 'success') {
+            logger.warn('Failed to check Flutterwave balance', {
+                requestId,
+                response: response.data
+            });
+            throw new Error('Failed to check Flutterwave balance');
+        }
+
+        const balance = Number(response.data.data.available_balance);
+        logger.info('Flutterwave balance checked', {
+            requestId,
+            balance
+        });
+
+        return balance;
+    } catch (error) {
+        logger.error('Error checking Flutterwave balance', {
+            requestId,
+            error: error.response?.data || error.message,
+            stack: error.stack
+        });
+        throw new Error(`Failed to check Flutterwave balance: ${error.response?.data?.message || error.message}`);
+    }
+};
+
+/**
  * Initiates an external transfer via Flutterwave with a 50 NGN fee.
  * @param {Object} params - Parameters
  * @returns {Object} Transfer response
@@ -412,7 +480,7 @@ const initiateExternalTransfer = async ({
             }
 
             if (validatedBalance < totalAmount) {
-                logger.warn('Insufficient balance for external transfer', {
+                logger.warn('Insufficient balance in wallet for external transfer', {
                     userId,
                     walletId: senderWallet._id,
                     accountNumber: senderWallet.accountNumber,
@@ -422,7 +490,35 @@ const initiateExternalTransfer = async ({
                     totalAmount,
                     requestId
                 });
-                throw new Error('Insufficient balance');
+                throw new Error('Insufficient balance in wallet');
+            }
+
+            // Verify recipient bank account
+            await verifyBankAccount({ accountNumber: recipientAccountNumber, bankCode: recipientBankCode, requestId });
+
+            // Check Flutterwave account balance (if supported)
+            try {
+                const flutterwaveBalance = await checkFlutterwaveBalance(requestId);
+                if (flutterwaveBalance < validatedAmount) {
+                    logger.warn('Insufficient balance in Flutterwave account', {
+                        userId,
+                        walletId: senderWallet._id,
+                        accountNumber: senderWallet.accountNumber,
+                        flutterwaveBalance,
+                        amount: validatedAmount,
+                        transferFee,
+                        totalAmount,
+                        requestId
+                    });
+                    throw new Error('Insufficient balance in payment provider account');
+                }
+            } catch (error) {
+                logger.warn('Skipping Flutterwave balance check due to API limitation or error', {
+                    userId,
+                    requestId,
+                    error: error.message
+                });
+                // Continue if balance check is not supported
             }
 
             const reference = `EXT-TRANSFER-${uuidv4()}`;
@@ -468,7 +564,7 @@ const initiateExternalTransfer = async ({
                     requestId,
                     response: response.data
                 });
-                throw new Error('External transfer initiation failed');
+                throw new Error(`External transfer initiation failed: ${response.data.message || 'Unknown error'}`);
             }
 
             senderWallet.balance = validatedBalance - totalAmount;
@@ -511,7 +607,8 @@ const initiateExternalTransfer = async ({
                 transferFee,
                 totalAmount,
                 reference,
-                requestId
+                requestId,
+                flutterwaveTransferId: response.data.data.id
             });
 
             return { transaction, flutterwaveResponse: response.data };
@@ -529,7 +626,8 @@ const initiateExternalTransfer = async ({
             amount,
             requestId,
             error: error.response?.data || error.message,
-            stack: error.stack
+            stack: error.stack,
+            flutterwaveError: error.response?.data
         });
         if (env.EMAIL_USER) {
             logger.debug('Preparing to send error email for external transfer failure', {
@@ -1024,5 +1122,6 @@ export default {
     initiateFlutterwavePayment,
     verifyFlutterwavePayment,
     verifyBankAccount,
-    initiateExternalTransfer
+    initiateExternalTransfer,
+    checkFlutterwaveBalance
 };

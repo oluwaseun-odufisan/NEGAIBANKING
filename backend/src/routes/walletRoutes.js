@@ -58,7 +58,7 @@ const callbackSchema = {
 
 const webhookSchema = {
     body: z.object({
-        event: z.string().min(1, 'Event is required'),
+        'event.type': z.string().min(1, 'Event type is required'),
         transfer: z.object({
             id: z.number().min(1, 'Transaction ID is required'),
             reference: z.string().min(1, 'Reference is required'),

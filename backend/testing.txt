@@ -4,19 +4,33 @@ curl -X POST -H "Content-Type: application/json" -d '{"firstName":"Ava","lastNam
 curl -X POST -H "Content-Type: application/json" -d '{"firstName":"Karl","lastName":"Earnder","email":"karlearnder@gmail.com","password":"SecurePass12345!","phoneNumber":"+2347042449381"}' http://localhost:3000/api/auth/register
 
 
-curl -X POST -H "Content-Type: application/json" -d '{"email":"karlearnder@gmail.com","password":"SecurePass12345!"}' http://localhost:3000/api/auth/login
+curl -X POST -H "Content-Type: application/json" -d '{"email":"avalawson452@gmail.com","password":"SecurePass1234!"}' http://localhost:3000/api/auth/login
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" -d '{"amount":30000,"accountNumber":"7042449381"}' http://localhost:3000/api/wallet/fund
+
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2NzQyNSwiZXhwIjoxNzUxMTcxMDI1fQ.TrQoPi5BjN_5Eze7FapfTliwamv1DRXH75NOjC6Vm7Q" -d '{"accountNumber":"0690000031","bankCode":"044"}' http://localhost:3000/api/wallet/verify-bank
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" -d '{"transactionId":"9455382","reference":"FUND-c9897067-f309-471a-911e-17b4e5fe694d"}' http://localhost:3000/api/wallet/verify-payment
+
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2ODkwNSwiZXhwIjoxNzUxMTcyNTA1fQ.WJyk0zKRkS0EsCmsuoMwYlS8SNtx6fvU37dXtY-i0vk" -d '{"recipientAccountNumber":"7042449381","amount":78000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer
 
 
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" -d '{"recipientAccountNumber":"7042449380","amount":5000,"description":"Test transfer"}' http://localhost:3000/api/wallet/transfer
+
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2ODkwNSwiZXhwIjoxNzUxMTcyNTA1fQ.WJyk0zKRkS0EsCmsuoMwYlS8SNtx6fvU37dXtY-i0vk" -d '{"recipientAccountNumber":"0690000031","amount":45000,"description":"Test external transfer","bankCode":"044","recipientAccountName":"Forrest Green","recipientBankName":"Access Bank"}' http://localhost:3000/api/wallet/transfer
+
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2NzQyNSwiZXhwIjoxNzUxMTcxMDI1fQ.TrQoPi5BjN_5Eze7FapfTliwamv1DRXH75NOjC6Vm7Q" \
+  -d '{"amount": 500000, "accountNumber": "7042449380"}' \
+  http://localhost:3000/api/wallet/fund
+
+
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2NzQyNSwiZXhwIjoxNzUxMTcxMDI1fQ.TrQoPi5BjN_5Eze7FapfTliwamv1DRXH75NOjC6Vm7Q" -d '{"transactionId":"9455638","reference":"FUND-3560164d-5c99-4cd9-bf83-b7938ca06433"}' http://localhost:3000/api/wallet/verify-payment
+
 
 
 curl -X GET -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ" http://localhost:3000/api/wallet/balance
 
 
-{"status":"success","message":"Login successful","data":{"accessToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTExNDQzMTB9.ZTPIzDc_bd-l1UsoURnOluzIpjBLmAQ0gmt9cNP8KzQ","refreshToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwNDkzZDFiZGZmYWE2NmRjODhhY2UiLCJlbWFpbCI6ImthcmxlYXJuZGVyQGdtYWlsLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUxMTQwNzEwLCJleHAiOjE3NTE3NDU1MTB9.sQu3AwV0h-G3bAUNM22-SZh9wHZYk9Q2K_XMOJdwhWU","user":{"id":"6860493d1bdffaa66dc88ace","email":"karlearnder@gmail.com","role":"user","isVerified":false,"accountNumber":"7042449381"},"walletId":"6860493d1bdffaa66dc88ad1"},"requestId":"16f21162-31f3-4b06-a0a0-7c5155765b1b","timestamp":"2025-06-28T19:58:31.231Z"}%  
+{"status":"success","message":"Login successful","data":{"accessToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2ODkwNSwiZXhwIjoxNzUxMTcyNTA1fQ.WJyk0zKRkS0EsCmsuoMwYlS8SNtx6fvU37dXtY-i0vk","refreshToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODYwYjE5ZGFiYjAyMzYyMjhlNGNmNWYiLCJlbWFpbCI6ImF2YWxhd3NvbjQ1MkBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTE2ODkwNSwiZXhwIjoxNzUxNzczNzA1fQ.96vYKgaVq-e55WWLA9j77s6-1jZeg8gUKV0VlMxLICU","user":{"id":"6860b19dabb0236228e4cf5f","email":"avalawson452@gmail.com","role":"user","isVerified":false,"accountNumber":"7042449380"},"walletId":"6860b19eabb0236228e4cf62"},"requestId":"33cdcef5-6702-41ef-bc59-0d3faae56b8e","timestamp":"2025-06-29T03:48:26.329Z"}%   

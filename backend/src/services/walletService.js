@@ -9,7 +9,7 @@ import { sendErrorAlert } from '../utils/email.js';
 
 /**
  * Wallet service for NEG AI Banking Platform.
- * Handles credit/debit operations with MongoDB transactions and Flutterwave integration.
+ * Handles credit/debit operations, internal/external transfers, and bank account verification with MongoDB transactions and Flutterwave integration.
  */
 
 /**
@@ -17,8 +17,10 @@ import { sendErrorAlert } from '../utils/email.js';
  * @param {Object} user - User object
  * @param {Object} transaction - Transaction details
  * @param {string} requestId - Request ID
+ * @param {number} balance - Current wallet balance
+ * @param {number} [transferFee] - Transfer fee (for external transfers)
  */
-const sendTransactionEmail = async (user, transaction, requestId) => {
+const sendTransactionEmail = async (user, transaction, requestId, balance, transferFee = 0) => {
     try {
         if (!user?.email) {
             logger.warn('User email is missing for transaction email', {
@@ -41,15 +43,19 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
             subject: `Transaction ${transaction.type === 'credit' ? 'Received' : 'Sent'} - NEG AI Banking Platform`,
             text: `
         Dear ${user.firstName} ${user.lastName},
-        
-        A ${transaction.type} transaction has been processed in your wallet (Account Number: ${user.accountNumber}):
+
+        A ${transaction.type} transaction has been processed in your wallet (Account Number: ${user.accountNumber}, Bank: ${user.bankName || 'NEG AI Bank'}):
         - Amount: NGN ${transaction.amount.toFixed(2)}
+        ${transferFee > 0 ? `- Transfer Fee: NGN ${transferFee.toFixed(2)}` : ''}
+        - Total Deducted: NGN ${(transaction.amount + transferFee).toFixed(2)}
+        - Current Balance: NGN ${balance.toFixed(2)}
         - Reference: ${transaction.reference}
         - Status: ${transaction.status}
         - Description: ${transaction.description || 'No description'}
         - Target Account: ${transaction.target || 'N/A'}
+        - Target Bank: ${transaction.targetBank || 'N/A'}
         - Timestamp: ${new Date().toISOString()}
-        
+
         For support, contact support@negaibanking.com.
         Request ID: ${requestId}
       `,
@@ -83,6 +89,80 @@ const sendTransactionEmail = async (user, transaction, requestId) => {
             error: error.message,
             stack: error.stack
         });
+    }
+};
+
+/**
+ * Verifies a bank account using Flutterwave's account resolution endpoint.
+ * @param {Object} params - Parameters
+ * @returns {Object} Bank account details
+ */
+const verifyBankAccount = async ({ accountNumber, bankCode, requestId }) => {
+    try {
+        if (!env.FLUTTERWAVE_SECRET_KEY) {
+            throw new Error('Flutterwave secret key is not defined');
+        }
+
+        const response = await axios.post(
+            'https://api.flutterwave.com/v3/accounts/resolve',
+            {
+                account_number: accountNumber,
+                account_bank: bankCode,
+                destination: 'NG' // Nigeria
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${env.FLUTTERWAVE_SECRET_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        if (response.data.status !== 'success') {
+            logger.warn('Bank account verification failed', {
+                accountNumber,
+                bankCode,
+                requestId,
+                response: response.data
+            });
+            throw new Error('Bank account verification failed');
+        }
+
+        logger.info('Bank account verified successfully', {
+            accountNumber,
+            bankCode,
+            requestId,
+            accountName: response.data.data.account_name,
+            bankName: response.data.data.bank_name
+        });
+
+        return response.data.data;
+    } catch (error) {
+        logger.error('Error verifying bank account', {
+            accountNumber,
+            bankCode,
+            requestId,
+            error: error.response?.data || error.message,
+            stack: error.stack
+        });
+        if (env.EMAIL_USER) {
+            logger.debug('Preparing to send error email for bank verification failure', {
+                accountNumber,
+                bankCode,
+                requestId,
+                recipient: env.EMAIL_USER
+            });
+            await sendErrorAlert(
+                { message: 'Error verifying bank account', type: 'error' },
+                {
+                    to: env.EMAIL_USER,
+                    subject: 'Bank Verification Failed - NEG AI Banking Platform',
+                    text: `Failed to verify bank account ${accountNumber} (Bank Code: ${bankCode}). Error: ${error.message}. Request ID: ${requestId}`,
+                    requestId
+                }
+            );
+        }
+        throw new Error(`Failed to verify bank account: ${error.response?.data?.message || error.message}`);
     }
 };
 
@@ -270,6 +350,210 @@ const verifyFlutterwavePayment = async (transactionId, requestId) => {
 };
 
 /**
+ * Initiates an external transfer via Flutterwave with a 50 NGN fee.
+ * @param {Object} params - Parameters
+ * @returns {Object} Transfer response
+ */
+const initiateExternalTransfer = async ({
+    userId,
+    amount,
+    recipientAccountNumber,
+    recipientBankCode,
+    recipientAccountName,
+    recipientBankName,
+    description,
+    requestId
+}) => {
+    try {
+        if (!env.FLUTTERWAVE_SECRET_KEY) {
+            throw new Error('Flutterwave secret key is not defined');
+        }
+
+        const session = await mongoose.startSession();
+        try {
+            session.startTransaction();
+
+            const senderWallet = await Wallet.findOne({ userId })
+                .session(session)
+                .select('+balance');
+            if (!senderWallet) {
+                throw new Error('Sender wallet not found');
+            }
+
+            // Ensure balance and amount are numbers
+            const validatedBalance = Number(senderWallet.balance);
+            const validatedAmount = Number(amount);
+            const transferFee = 50; // Fixed 50 NGN fee for external transfers
+            const totalAmount = validatedAmount + transferFee;
+
+            logger.debug('Fetched sender wallet for external transfer', {
+                userId,
+                walletId: senderWallet._id,
+                accountNumber: senderWallet.accountNumber,
+                rawBalance: senderWallet.balance,
+                validatedBalance,
+                balanceType: typeof senderWallet.balance,
+                amount,
+                validatedAmount,
+                transferFee,
+                totalAmount,
+                requestId
+            });
+
+            if (isNaN(validatedBalance) || isNaN(validatedAmount)) {
+                logger.error('Invalid balance or amount type', {
+                    userId,
+                    walletId: senderWallet._id,
+                    validatedBalance,
+                    validatedAmount,
+                    requestId
+                });
+                throw new Error('Invalid balance or amount');
+            }
+
+            if (validatedBalance < totalAmount) {
+                logger.warn('Insufficient balance for external transfer', {
+                    userId,
+                    walletId: senderWallet._id,
+                    accountNumber: senderWallet.accountNumber,
+                    validatedBalance,
+                    amount: validatedAmount,
+                    transferFee,
+                    totalAmount,
+                    requestId
+                });
+                throw new Error('Insufficient balance');
+            }
+
+            const reference = `EXT-TRANSFER-${uuidv4()}`;
+
+            const existingTransaction = senderWallet.ledger.find(
+                (tx) => tx.reference === reference
+            );
+            if (existingTransaction) {
+                logger.warn('Duplicate external transfer detected', {
+                    userId,
+                    reference,
+                    requestId
+                });
+                throw new Error('Transaction already processed');
+            }
+
+            const response = await axios.post(
+                'https://api.flutterwave.com/v3/transfers',
+                {
+                    account_bank: recipientBankCode,
+                    account_number: recipientAccountNumber,
+                    amount: validatedAmount,
+                    currency: 'NGN',
+                    reference,
+                    narration: description || 'External transfer from NEG AI Bank',
+                    debit_currency: 'NGN'
+                },
+                {
+                    headers: {
+                        Authorization: `Bearer ${env.FLUTTERWAVE_SECRET_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            if (response.data.status !== 'success') {
+                logger.warn('External transfer initiation failed', {
+                    userId,
+                    recipientAccountNumber,
+                    recipientBankCode,
+                    amount: validatedAmount,
+                    reference,
+                    requestId,
+                    response: response.data
+                });
+                throw new Error('External transfer initiation failed');
+            }
+
+            senderWallet.balance = validatedBalance - totalAmount;
+            const transaction = {
+                type: 'debit',
+                amount: validatedAmount,
+                reference,
+                status: 'completed',
+                source: 'external_transfer',
+                target: recipientAccountNumber,
+                targetBank: recipientBankName,
+                description,
+                createdBy: userId,
+                metadata: { transferFee }
+            };
+            senderWallet.ledger.push(transaction);
+
+            await senderWallet.save({ session });
+
+            await session.commitTransaction();
+
+            const user = await User.findById(userId);
+            if (user) {
+                await sendTransactionEmail(user, transaction, requestId, senderWallet.balance, transferFee);
+            } else {
+                logger.warn('User not found for email notification', {
+                    userId,
+                    reference,
+                    requestId
+                });
+            }
+
+            logger.info('External transfer initiated successfully', {
+                userId,
+                accountNumber: senderWallet.accountNumber,
+                recipientAccountNumber,
+                recipientBankCode,
+                recipientBankName,
+                amount: validatedAmount,
+                transferFee,
+                totalAmount,
+                reference,
+                requestId
+            });
+
+            return { transaction, flutterwaveResponse: response.data };
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
+    } catch (error) {
+        logger.error('Error initiating external transfer', {
+            userId,
+            recipientAccountNumber,
+            recipientBankCode,
+            amount,
+            requestId,
+            error: error.response?.data || error.message,
+            stack: error.stack
+        });
+        if (env.EMAIL_USER) {
+            logger.debug('Preparing to send error email for external transfer failure', {
+                userId,
+                recipientAccountNumber,
+                recipientBankCode,
+                requestId,
+                recipient: env.EMAIL_USER
+            });
+            await sendErrorAlert(
+                { message: 'Error initiating external transfer', type: 'error' },
+                {
+                    to: env.EMAIL_USER,
+                    subject: 'External Transfer Failed - NEG AI Banking Platform',
+                    text: `Failed to initiate external transfer for user ${userId} to account ${recipientAccountNumber} (Bank Code: ${recipientBankCode}). Error: ${error.message}. Request ID: ${requestId}`,
+                    requestId
+                }
+            );
+        }
+        throw new Error(`Failed to initiate external transfer: ${error.response?.data?.message || error.message}`);
+    }
+};
+
+/**
  * Credits a wallet using a MongoDB transaction.
  * @param {Object} params - Parameters
  * @returns {Object} Updated wallet and transaction
@@ -281,7 +565,9 @@ const creditWallet = async ({
     source = 'flutterwave',
     description,
     requestId,
-    flutterwaveTxId
+    flutterwaveTxId,
+    senderAccountNumber,
+    senderBankName
 }) => {
     const session = await mongoose.startSession();
     try {
@@ -303,6 +589,20 @@ const creditWallet = async ({
             requestId
         });
 
+        const validatedBalance = Number(wallet.balance);
+        const validatedAmount = Number(amount);
+
+        if (isNaN(validatedBalance) || isNaN(validatedAmount)) {
+            logger.error('Invalid balance or amount type for credit', {
+                userId,
+                walletId: wallet._id,
+                validatedBalance,
+                validatedAmount,
+                requestId
+            });
+            throw new Error('Invalid balance or amount');
+        }
+
         const existingTransaction = wallet.ledger.find(
             (tx) => tx.reference === reference
         );
@@ -315,16 +615,18 @@ const creditWallet = async ({
             throw new Error('Transaction already processed');
         }
 
-        wallet.balance += amount;
+        wallet.balance = validatedBalance + validatedAmount;
         const transaction = {
             type: 'credit',
-            amount,
+            amount: validatedAmount,
             reference,
             status: 'completed',
             source,
             description,
             createdBy: userId,
-            metadata: flutterwaveTxId ? { flutterwaveTxId } : {}
+            metadata: flutterwaveTxId ? { flutterwaveTxId } : {},
+            target: senderAccountNumber || null,
+            targetBank: senderBankName || null
         };
         wallet.ledger.push(transaction);
 
@@ -334,7 +636,7 @@ const creditWallet = async ({
 
         const user = await User.findById(userId);
         if (user) {
-            await sendTransactionEmail(user, transaction, requestId);
+            await sendTransactionEmail(user, transaction, requestId, wallet.balance);
         } else {
             logger.warn('User not found for email notification', {
                 userId,
@@ -346,7 +648,7 @@ const creditWallet = async ({
         logger.info('Wallet credited successfully', {
             userId,
             accountNumber: wallet.accountNumber,
-            amount,
+            amount: validatedAmount,
             reference,
             requestId
         });
@@ -417,6 +719,32 @@ const debitWallet = async ({
             requestId
         });
 
+        const validatedBalance = Number(wallet.balance);
+        const validatedAmount = Number(amount);
+
+        if (isNaN(validatedBalance) || isNaN(validatedAmount)) {
+            logger.error('Invalid balance or amount type for debit', {
+                userId,
+                walletId: wallet._id,
+                validatedBalance,
+                validatedAmount,
+                requestId
+            });
+            throw new Error('Invalid balance or amount');
+        }
+
+        if (validatedBalance < validatedAmount) {
+            logger.warn('Insufficient balance for debit', {
+                userId,
+                walletId: wallet._id,
+                accountNumber: wallet.accountNumber,
+                validatedBalance,
+                amount: validatedAmount,
+                requestId
+            });
+            throw new Error('Insufficient balance');
+        }
+
         const existingTransaction = wallet.ledger.find(
             (tx) => tx.reference === reference
         );
@@ -429,12 +757,10 @@ const debitWallet = async ({
             throw new Error('Transaction already processed');
         }
 
-        await wallet.hasSufficientBalance(amount);
-
-        wallet.balance -= amount;
+        wallet.balance = validatedBalance - validatedAmount;
         const transaction = {
             type: 'debit',
-            amount,
+            amount: validatedAmount,
             reference,
             status: 'completed',
             source: 'transfer',
@@ -450,7 +776,7 @@ const debitWallet = async ({
 
         const user = await User.findById(userId);
         if (user) {
-            await sendTransactionEmail(user, transaction, requestId);
+            await sendTransactionEmail(user, transaction, requestId, wallet.balance);
         } else {
             logger.warn('User not found for email notification', {
                 userId,
@@ -462,7 +788,7 @@ const debitWallet = async ({
         logger.info('Wallet debited successfully', {
             userId,
             accountNumber: wallet.accountNumber,
-            amount,
+            amount: validatedAmount,
             target,
             requestId
         });
@@ -533,6 +859,32 @@ const transferFunds = async ({
             requestId
         });
 
+        const validatedSenderBalance = Number(senderWallet.balance);
+        const validatedAmount = Number(amount);
+
+        if (isNaN(validatedSenderBalance) || isNaN(validatedAmount)) {
+            logger.error('Invalid balance or amount type for transfer', {
+                senderId,
+                walletId: senderWallet._id,
+                validatedSenderBalance,
+                validatedAmount,
+                requestId
+            });
+            throw new Error('Invalid balance or amount');
+        }
+
+        if (validatedSenderBalance < validatedAmount) {
+            logger.warn('Insufficient balance for transfer', {
+                senderId,
+                walletId: senderWallet._id,
+                accountNumber: senderWallet.accountNumber,
+                validatedSenderBalance,
+                amount: validatedAmount,
+                requestId
+            });
+            throw new Error('Insufficient balance');
+        }
+
         const recipient = await User.findOne({ accountNumber: recipientAccountNumber });
         if (!recipient) {
             throw new Error('Recipient not found');
@@ -576,29 +928,29 @@ const transferFunds = async ({
             throw new Error('Transaction already processed');
         }
 
-        await senderWallet.hasSufficientBalance(amount);
-
-        senderWallet.balance -= amount;
+        senderWallet.balance = validatedSenderBalance - validatedAmount;
         const senderTransaction = {
             type: 'debit',
-            amount,
+            amount: validatedAmount,
             reference: senderReference,
             status: 'completed',
             source: 'transfer',
             target: recipient.accountNumber,
+            targetBank: recipient.bankName || 'NEG AI Bank',
             description,
             createdBy: senderId
         };
         senderWallet.ledger.push(senderTransaction);
 
-        recipientWallet.balance += amount;
+        recipientWallet.balance = Number(recipientWallet.balance) + validatedAmount;
         const recipientTransaction = {
             type: 'credit',
-            amount,
+            amount: validatedAmount,
             reference: recipientReference,
             status: 'completed',
             source: 'transfer',
             target: null,
+            targetBank: senderWallet.bankName || 'NEG AI Bank',
             description: `Received from ${senderWallet.accountNumber}`,
             createdBy: senderId
         };
@@ -611,12 +963,12 @@ const transferFunds = async ({
 
         const sender = await User.findById(senderId);
         if (sender) {
-            sendTransactionEmail(sender, senderTransaction, requestId).catch(() => {
+            sendTransactionEmail(sender, senderTransaction, requestId, senderWallet.balance).catch(() => {
                 logger.error('Async sender transaction email failed', { senderId, requestId });
             });
         }
         if (recipient) {
-            sendTransactionEmail(recipient, recipientTransaction, requestId).catch(() => {
+            sendTransactionEmail(recipient, recipientTransaction, requestId, recipientWallet.balance).catch(() => {
                 logger.error('Async recipient transaction email failed', { recipientId: recipient._id, requestId });
             });
         }
@@ -626,7 +978,7 @@ const transferFunds = async ({
             recipientId: recipient._id,
             senderAccountNumber: senderWallet.accountNumber,
             recipientAccountNumber,
-            amount,
+            amount: validatedAmount,
             senderReference,
             recipientReference,
             requestId
@@ -670,5 +1022,7 @@ export default {
     debitWallet,
     transferFunds,
     initiateFlutterwavePayment,
-    verifyFlutterwavePayment
+    verifyFlutterwavePayment,
+    verifyBankAccount,
+    initiateExternalTransfer
 };

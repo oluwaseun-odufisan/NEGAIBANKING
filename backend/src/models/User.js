@@ -7,7 +7,7 @@ import logger from '../utils/logger.js';
 /**
  * User schema for the NEG AI Banking Platform.
  * Includes encrypted fields (NIN, password reset token), role-based access,
- * session tracking, and account number generated from phone number.
+ * session tracking, account number generated from phone number, and bank name.
  * @type {mongoose.Schema}
  */
 const userSchema = new mongoose.Schema(
@@ -50,6 +50,11 @@ const userSchema = new mongoose.Schema(
             trim: true,
             match: [/^\d{10}$/, 'Account number must be 10 digits'],
             index: true
+        },
+        bankName: {
+            type: String,
+            default: 'NEG AI Bank',
+            trim: true
         },
         password: {
             type: String,
@@ -197,6 +202,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 
 // Create index for sessions.refreshToken and accountNumber
 userSchema.index({ 'sessions.refreshToken': 1 });
+
 /**
  * Removes expired sessions from user document.
  * @returns {Promise<void>}

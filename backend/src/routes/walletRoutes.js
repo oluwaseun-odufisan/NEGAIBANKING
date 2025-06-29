@@ -30,11 +30,21 @@ const verifyPaymentSchema = {
     })
 };
 
+const verifyBankSchema = {
+    body: z.object({
+        accountNumber: z.string().regex(/^\d{10}$/, 'Account number must be 10 digits'),
+        bankCode: z.string().regex(/^\d{3}$/, 'Bank code must be 3 digits')
+    })
+};
+
 const transferSchema = {
     body: z.object({
         recipientAccountNumber: z.string().regex(/^\d{10}$/, 'Recipient account number must be 10 digits'),
         amount: z.number().positive('Amount must be positive').max(500000, 'Amount cannot exceed NGN 500,000'),
-        description: z.string().max(200, 'Description cannot exceed 200 characters').optional()
+        description: z.string().max(200, 'Description cannot exceed 200 characters').optional(),
+        bankCode: z.string().regex(/^\d{3}$/, 'Bank code must be 3 digits').optional(),
+        recipientAccountName: z.string().min(1, 'Recipient account name is required').optional(),
+        recipientBankName: z.string().min(1, 'Recipient bank name is required').optional()
     })
 };
 
@@ -48,9 +58,17 @@ const callbackSchema = {
 
 const webhookSchema = {
     body: z.object({
-        id: z.string().min(1, 'Transaction ID is required'),
-        txRef: z.string().min(1, 'Reference is required'),
-        status: z.enum(['successful', 'failed', 'cancelled'])
+        event: z.string().min(1, 'Event is required'),
+        transfer: z.object({
+            id: z.number().min(1, 'Transaction ID is required'),
+            reference: z.string().min(1, 'Reference is required'),
+            status: z.enum(['SUCCESSFUL', 'FAILED', 'PENDING']),
+            account_number: z.string().regex(/^\d{10}$/, 'Account number must be 10 digits').optional(),
+            bank_name: z.string().min(1, 'Bank name is required').optional(),
+            amount: z.number().positive('Amount must be positive').optional(),
+            sender_account_number: z.string().optional(),
+            sender_bank_name: z.string().optional()
+        })
     })
 };
 
@@ -58,6 +76,7 @@ const webhookSchema = {
 logger.debug('walletRoutes: Schema definitions', {
     fundSchema: Object.keys(fundSchema),
     verifyPaymentSchema: Object.keys(verifyPaymentSchema),
+    verifyBankSchema: Object.keys(verifyBankSchema),
     transferSchema: Object.keys(transferSchema),
     callbackSchema: Object.keys(callbackSchema),
     webhookSchema: Object.keys(webhookSchema)
@@ -89,6 +108,14 @@ router.post(
     walletRateLimiter,
     validateRequest(verifyPaymentSchema),
     walletController.verifyPayment
+);
+
+router.post(
+    '/verify-bank',
+    authMiddleware,
+    walletRateLimiter,
+    validateRequest(verifyBankSchema),
+    walletController.verifyBankAccount
 );
 
 router.post(

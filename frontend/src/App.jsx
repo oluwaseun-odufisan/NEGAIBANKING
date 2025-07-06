@@ -1,14 +1,14 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import AuthLayout from './layouts/AuthLayout';
-import MainLayout from './layouts/MainLayout';
-import AdminLayout from './layouts/AdminLayout';
-import Login from './pages/login';
-import Signup from './pages/signup';
-import Dashboard from './pages/dashboard';
-import Wallet from './pages/wallet';
-import Transactions from './pages/transactions';
+import AuthLayout from './layouts/Footer';
+import MainLayout from './layouts/Sidebar';
+import AdminLayout from './layouts/Header';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Dashboard from './pages/Dashboard';
+import Wallet from './pages/Wallet.jsx';
+import Transactions from './pages/TransactionHistory.jsx.jsx';
 import Profile from './pages/profile';
 import Kyc from './pages/kyc';
 import Error from './pages/error';
@@ -17,6 +17,7 @@ import AdminUsers from './pages/admin/users';
 import AdminTransactions from './pages/admin/transactions';
 import AdminKyc from './pages/admin/kyc';
 import AdminAnnouncements from './pages/admin/announcements';
+import './index.css';
 
 function ProtectedRoute({ children, isAdmin = false }) {
   const { isAuthenticated, user } = useSelector((state) => state.auth);

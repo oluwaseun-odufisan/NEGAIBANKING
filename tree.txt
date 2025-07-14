@@ -1,0 +1,196 @@
+.
+├── .gitignore
+├── backend
+│   ├── .env.example
+│   ├── .eslintignore
+│   ├── .eslintrc.json
+│   ├── .gitignore
+│   ├── .prettierrc
+│   ├── logs
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── public
+│   │   └── favicon.ico
+│   ├── README.md
+│   ├── scripts
+│   │   └── backup.sh
+│   ├── src
+│   │   ├── app.js
+│   │   ├── config
+│   │   │   ├── db.js
+│   │   │   └── env.js
+│   │   ├── controllers
+│   │   │   ├── authController.js
+│   │   │   └── walletController.js
+│   │   ├── jobs
+│   │   ├── logs
+│   │   ├── middlewares
+│   │   │   ├── authMiddleware.js
+│   │   │   ├── corsMiddleware.js
+│   │   │   ├── errorHandler.js
+│   │   │   ├── notFound.js
+│   │   │   ├── rateLimiter.js
+│   │   │   ├── requestId.js
+│   │   │   ├── roleMiddleware.js
+│   │   │   ├── securityMiddleware.js
+│   │   │   └── validateRequest.js
+│   │   ├── models
+│   │   │   ├── User.js
+│   │   │   └── Wallet.js
+│   │   ├── routes
+│   │   │   ├── authRoutes.js
+│   │   │   └── walletRoutes.js
+│   │   ├── server.js
+│   │   ├── services
+│   │   │   └── walletService.js
+│   │   ├── tests
+│   │   │   └── walletController.test.js
+│   │   └── utils
+│   │       ├── email.js
+│   │       ├── logger.js
+│   │       └── response.js
+│   └── testing.txt
+├── frontend
+│   ├── .env.example
+│   ├── .eslintrc.json
+│   ├── .gitignore
+│   ├── .prettierrc
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── public
+│   │   ├── favicon.ico
+│   │   ├── index.html
+│   │   ├── logo.png
+│   │   ├── manifest.json
+│   │   └── robots.txt
+│   ├── README.md
+│   ├── src
+│   │   ├── App.jsx
+│   │   ├── assets
+│   │   │   ├── .DS_Store
+│   │   │   ├── icons
+│   │   │   │   ├── .DS_Store
+│   │   │   │   ├── analytics.svg
+│   │   │   │   ├── bill.svg
+│   │   │   │   ├── card.svg
+│   │   │   │   ├── history.svg
+│   │   │   │   ├── kyc.svg
+│   │   │   │   ├── language.svg
+│   │   │   │   ├── notification.svg
+│   │   │   │   ├── savings.svg
+│   │   │   │   ├── settings.svg
+│   │   │   │   ├── target.svg
+│   │   │   │   ├── transfer.svg
+│   │   │   │   └── wallet.svg
+│   │   │   └── images
+│   │   │       ├── .DS_Store
+│   │   │       ├── analytics-bg.png
+│   │   │       ├── card-bg.png
+│   │   │       ├── hero-bg.PNG
+│   │   │       ├── kyc-bg.png
+│   │   │       ├── logo.png
+│   │   │       ├── negaibg.png
+│   │   │       └── savings-bg.png
+│   │   ├── components
+│   │   │   ├── common
+│   │   │   │   ├── Button.jsx
+│   │   │   │   ├── Card.jsx
+│   │   │   │   ├── Dropdown.jsx
+│   │   │   │   ├── Input.jsx
+│   │   │   │   ├── Loader.jsx
+│   │   │   │   ├── Modal.jsx
+│   │   │   │   ├── ProgressBar.jsx
+│   │   │   │   ├── Table.jsx
+│   │   │   │   ├── Toast.jsx
+│   │   │   │   └── Toggle.jsx
+│   │   │   ├── forms
+│   │   │   │   ├── BillPaymentForm.jsx
+│   │   │   │   ├── CardLimitForm.jsx
+│   │   │   │   ├── CardRequestForm.jsx
+│   │   │   │   ├── FixedSavingsForm.jsx
+│   │   │   │   ├── FundWalletForm.jsx
+│   │   │   │   ├── KYCForm.jsx
+│   │   │   │   ├── LoginForm.jsx
+│   │   │   │   ├── NotificationSettingsForm.jsx
+│   │   │   │   ├── PasswordResetForm.jsx
+│   │   │   │   ├── SignupForm.jsx
+│   │   │   │   ├── TargetSavingsForm.jsx
+│   │   │   │   ├── TransferForm.jsx
+│   │   │   │   ├── VerifyBankForm.jsx
+│   │   │   │   └── WithdrawForm.jsx
+│   │   │   ├── layout
+│   │   │   │   ├── Footer.jsx
+│   │   │   │   ├── Header.jsx
+│   │   │   │   ├── Navbar.jsx
+│   │   │   │   ├── ProtectedRoute.jsx
+│   │   │   │   └── Sidebar.jsx
+│   │   │   └── ui
+│   │   │       ├── AnalyticsChart.jsx
+│   │   │       ├── CardDetails.jsx
+│   │   │       ├── KYCStatus.jsx
+│   │   │       ├── LanguageSelector.jsx
+│   │   │       ├── NotificationBanner.jsx
+│   │   │       ├── SavingsCard.jsx
+│   │   │       └── TransactionCard.jsx
+│   │   ├── context
+│   │   │   ├── AuthContext.jsx
+│   │   │   ├── LanguageContext.jsx
+│   │   │   ├── NotificationContext.jsx
+│   │   │   └── ThemeContext.jsx
+│   │   ├── hooks
+│   │   │   ├── useAnalytics.js
+│   │   │   ├── useApi.js
+│   │   │   ├── useAuth.js
+│   │   │   ├── useCards.js
+│   │   │   ├── useFormValidation.js
+│   │   │   ├── useKYC.js
+│   │   │   ├── useLanguage.js
+│   │   │   ├── useNotifications.js
+│   │   │   └── useSavings.js
+│   │   ├── index.css
+│   │   ├── main.jsx
+│   │   ├── pages
+│   │   │   ├── Analytics.jsx
+│   │   │   ├── BillPayment.jsx
+│   │   │   ├── Callback.jsx
+│   │   │   ├── CardManagement.jsx
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── FixedSavings.jsx
+│   │   │   ├── Home.jsx
+│   │   │   ├── KYVerification.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── NotFound.jsx
+│   │   │   ├── Notifications.jsx
+│   │   │   ├── PasswordReset.jsx
+│   │   │   ├── Settings.jsx
+│   │   │   ├── Signup.jsx
+│   │   │   ├── TargetSavings.jsx
+│   │   │   ├── TransactionHistory.jsx
+│   │   │   ├── Transfer.jsx
+│   │   │   └── Wallet.jsx
+│   │   ├── services
+│   │   │   ├── analytics.js
+│   │   │   ├── api.js
+│   │   │   ├── auth.js
+│   │   │   ├── cards.js
+│   │   │   ├── kyc.js
+│   │   │   ├── notifications.js
+│   │   │   └── savings.js
+│   │   ├── styles
+│   │   │   ├── animations.css
+│   │   │   ├── global.css
+│   │   │   └── tailwind.css
+│   │   └── utils
+│   │       ├── constants.js
+│   │       ├── formatters.js
+│   │       ├── helpers.js
+│   │       ├── i18n.js
+│   │       └── validators.js
+│   ├── tailwind.config.js
+│   └── vite.config.js
+└── tree.txt
+
+33 directories, 161 files

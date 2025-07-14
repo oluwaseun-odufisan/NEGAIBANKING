@@ -85,15 +85,15 @@ Below are the key diagrams illustrating the architecture and design of TaskSync 
 
 ### Data Flow Diagram
 ![Data Flow Diagram](diagrams/data_flow.png)
-Illustrates how data flows between users, admins, and system components for tasks, files, and notifications.
+
 
 ### UML Class Diagram
 ![Class Diagram](diagrams/class_diagram.png)
-Represents the data models (e.g., User, Task, Goal) and their relationships.
 
-### UML Sequence Diagram (Task Creation)
+
+### UML Sequence Diagram
 ![Sequence Diagram](diagrams/sequence_diagram.png)
-Details the sequence of interactions when a user creates a task.
+
 
 
 

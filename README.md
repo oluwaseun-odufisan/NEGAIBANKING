@@ -81,7 +81,7 @@ NEG AI Banking is a full-stack web application built to streamline digital banki
 
 ## System Diagrams
 
-Below are the key diagrams illustrating the architecture and design of TaskSync Pro.
+Below are the key diagrams illustrating the architecture and design of NEG AI Banking System.
 
 ### Data Flow Diagram
 ![Data Flow Diagram](diagrams/data_flow.png)

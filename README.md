@@ -1,7 +1,7 @@
 
 # NEG AI Banking
 
-NEG AI Banking is a scalable digital banking platform designed to provide a seamless banking experience in Nigeria, offering wallet management, secure transactions, advanced KYC verification, and robust admin controls. It aims to compete with platforms like Opay and Palmpay by leveraging modern technologies and compliance with Nigerian regulations.
+NEG AI Banking is a scalable digital banking platform designed to provide a smooth banking experience in Nigeria, offering wallet management, secure transactions, advanced KYC verification, and robust admin controls. It aims to compete with platforms like Opay and Palmpay by leveraging modern technologies and compliance with Nigerian regulations.
 
 ## Table of Contents
 1. [Project Overview](#project-overview)

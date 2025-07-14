@@ -12,9 +12,7 @@ NEG AI Banking is a scalable digital banking platform designed to provide a smoo
 6. [Frontend Components](#frontend-components)
 7. [Backend Architecture](#backend-architecture)
 8. [Testing](#testing)
-9. [Contributing](#contributing)
-10. [License](#license)
-11. [Contact](#contact)
+
 
 ## Project Overview
 

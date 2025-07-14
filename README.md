@@ -77,6 +77,26 @@ NEG AI Banking is a full-stack web application built to streamline digital banki
    - Create, edit, and broadcast platform-wide announcements.
 6. **Fraud Detection**:
    - Flag suspicious activities (e.g., multiple failed logins, high-frequency transactions).
+  
+
+## System Diagrams
+
+Below are the key diagrams illustrating the architecture and design of TaskSync Pro.
+
+### Data Flow Diagram
+![Data Flow Diagram](diagrams/data_flow.png)
+Illustrates how data flows between users, admins, and system components for tasks, files, and notifications.
+
+### UML Class Diagram
+![Class Diagram](diagrams/class_diagram.png)
+Represents the data models (e.g., User, Task, Goal) and their relationships.
+
+### UML Sequence Diagram (Task Creation)
+![Sequence Diagram](diagrams/sequence_diagram.png)
+Details the sequence of interactions when a user creates a task.
+
+
+
 
 ## Project Structure
 
@@ -242,7 +262,7 @@ NEG AI Banking is a full-stack web application built to streamline digital banki
 
 ### Directory Descriptions
 - **backend**: Node.js/Express backend with controllers, models, routes, middleware, services, and utilities for authentication, wallet, KYC, bills, savings, and admin functions.
-- **frontend**: Next.js/React frontend with pages, components, services, and state management for user and admin interfaces.
+- **frontend**: React frontend with pages, components, services, and state management for user and admin interfaces.
 - **tests**: Jest (backend) and Playwright (frontend) test suites.
 - **config**: Backend configuration for MongoDB and environment variables.
 - **services**: Integrations for Flutterwave, KYC APIs, and email notifications.
@@ -277,7 +297,7 @@ NEG AI Banking is a full-stack web application built to streamline digital banki
 4. Example `.env`:
    ```bash
    PORT=3000
-   MONGODB_URI=mongodb://localhost:27017/neg-ai-banking
+   MONGODB_URI=your_mongo_uri
    REDIS_URL=redis://localhost:6379
    JWT_SECRET=your_jwt_secret
    EMAIL_SERVICE=gmail
